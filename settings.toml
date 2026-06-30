@@ -1,0 +1,5 @@
+# Optional path to the apply-patch/apply_patch/codex executable. Leave empty to search PATH.
+executable_path = ""
+
+# Optional arguments placed before the patch body. Use ["--codex-run-as-apply-patch"] when executable_path points at codex.exe.
+arguments = []
