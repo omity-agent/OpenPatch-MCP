@@ -245,6 +245,58 @@ two
 3
 ```
 
+## 6.1. 单个文件内部分更新块失败
+
+初始文件：
+
+```text
+target.txt
+----------
+one
+two
+three
+```
+
+输入：
+
+```text
+*** Begin Patch
+*** Update File: target.txt
+@@
+-one
++1
+@@
+-missing
++changed
+@@
+-three
++3
+*** End Patch
+```
+
+输出：
+
+```text
+exit_code: 1
+stdout:
+Updated the following files:
+M target.txt
+
+stderr:
+Failed to find expected lines in C:/work/example/target.txt:
+missing
+```
+
+最终文件：
+
+```text
+target.txt
+----------
+1
+two
+3
+```
+
 ## 7. 只插入内容
 
 初始文件：

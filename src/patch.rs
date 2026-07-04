@@ -55,13 +55,16 @@ fn apply_hunk(
         } => {
             let original_contents = writer.read_file_to_update(&path)?;
             let source = writer.resolve(&path)?;
-            let new_contents = derive_new_contents(&source, &original_contents, &chunks)?;
+            let derived = derive_new_contents(&source, &original_contents, &chunks);
+            summary.errors.extend(derived.errors);
             if let Some(destination_path) = move_path {
-                writer.write_with_parent_retry(&destination_path, new_contents)?;
-                writer.delete_original(&path)?;
-                summary.modified.push(destination_path);
-            } else {
-                writer.write_file(&path, new_contents)?;
+                if chunks.is_empty() || derived.applied_chunks > 0 {
+                    writer.write_with_parent_retry(&destination_path, derived.contents)?;
+                    writer.delete_original(&path)?;
+                    summary.modified.push(destination_path);
+                }
+            } else if derived.applied_chunks > 0 {
+                writer.write_file(&path, derived.contents)?;
                 summary.modified.push(path);
             }
         }
@@ -107,4 +110,47 @@ fn push_path_line(output: &mut String, marker: char, path: &Path) {
     output.push(' ');
     output.push_str(&path.display().to_string());
     output.push('\n');
+}
+#[cfg(test)]
+mod tests {
+    use super::apply_patch_text;
+    use std::{
+        fs,
+        path::PathBuf,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+    #[test]
+    fn failed_chunk_does_not_stop_following_chunks_in_same_file() {
+        let directory = unique_temp_directory().unwrap();
+        let target_path = directory.join("target.txt");
+        fs::write(&target_path, "one\ntwo\nthree\n").unwrap();
+        let patch = [
+            "*** Begin Patch",
+            "*** Update File: target.txt",
+            "@@",
+            "-one",
+            "+1",
+            "@@",
+            "-missing",
+            "+changed",
+            "@@",
+            "-three",
+            "+3",
+            "*** End Patch",
+            "",
+        ]
+        .join("\n");
+        let result = apply_patch_text(&patch, &directory);
+        assert!(result.stdout.contains("M target.txt"));
+        assert!(result.stderr.contains("Failed to find expected lines"));
+        assert_eq!(fs::read_to_string(&target_path).unwrap(), "1\ntwo\n3\n");
+        fs::remove_dir_all(directory).unwrap();
+    }
+    fn unique_temp_directory() -> anyhow::Result<PathBuf> {
+        let suffix = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+        let directory =
+            std::env::temp_dir().join(format!("apply-patch-mcp-{}-{suffix}", std::process::id()));
+        fs::create_dir_all(&directory)?;
+        Ok(directory)
+    }
 }
