@@ -21,6 +21,12 @@ stderr:
 <失败信息>
 ```
 
+成功应用的文件摘要中，每个文件行格式为：
+
+```text
+<A|M|D> <path> (before: <修改前行数> lines, <修改前字符数> chars; after: <修改后行数> lines, <修改后字符数> chars)
+```
+
 如果 `exit_code` 为 `1`，MCP tool result 会被标记为 error；如果为 `0`，会被标记为 success。
 
 ## 1. 新增文件
@@ -47,7 +53,7 @@ stderr:
 exit_code: 0
 stdout:
 Success. Updated the following files:
-A hello.txt
+A hello.txt (before: 0 lines, 0 chars; after: 2 lines, 12 chars)
 
 stderr:
 ```
@@ -77,7 +83,7 @@ world
 exit_code: 0
 stdout:
 Success. Updated the following files:
-A empty.txt
+A empty.txt (before: 0 lines, 0 chars; after: 0 lines, 0 chars)
 
 stderr:
 ```
@@ -105,7 +111,7 @@ empty.txt 为空文件
 exit_code: 0
 stdout:
 Success. Updated the following files:
-A docs/example.txt
+A docs/example.txt (before: 0 lines, 0 chars; after: 1 lines, 32 chars)
 
 stderr:
 ```
@@ -139,7 +145,7 @@ old
 exit_code: 0
 stdout:
 Success. Updated the following files:
-M target.txt
+M target.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
 
 stderr:
 ```
@@ -182,7 +188,7 @@ omega
 exit_code: 0
 stdout:
 Success. Updated the following files:
-M target.txt
+M target.txt (before: 4 lines, 23 chars; after: 4 lines, 23 chars)
 
 stderr:
 ```
@@ -230,7 +236,7 @@ three
 exit_code: 0
 stdout:
 Success. Updated the following files:
-M target.txt
+M target.txt (before: 3 lines, 14 chars; after: 3 lines, 8 chars)
 
 stderr:
 ```
@@ -280,7 +286,7 @@ three
 exit_code: 1
 stdout:
 Updated the following files:
-M target.txt
+M target.txt (before: 3 lines, 14 chars; after: 3 lines, 8 chars)
 
 stderr:
 Failed to find expected lines in C:/work/example/target.txt:
@@ -323,7 +329,7 @@ alpha
 exit_code: 0
 stdout:
 Success. Updated the following files:
-M target.txt
+M target.txt (before: 1 lines, 6 chars; after: 2 lines, 11 chars)
 
 stderr:
 ```
@@ -342,7 +348,9 @@ beta
 初始文件：
 
 ```text
-obsolete.txt 存在
+obsolete.txt
+------------
+obsolete
 ```
 
 输入：
@@ -359,7 +367,7 @@ obsolete.txt 存在
 exit_code: 0
 stdout:
 Success. Updated the following files:
-D obsolete.txt
+D obsolete.txt (before: 1 lines, 9 chars; after: 0 lines, 0 chars)
 
 stderr:
 ```
@@ -391,7 +399,7 @@ content
 exit_code: 0
 stdout:
 Success. Updated the following files:
-M new-name.txt
+M new-name.txt (before: 1 lines, 8 chars; after: 1 lines, 8 chars)
 
 stderr:
 ```
@@ -426,7 +434,7 @@ old
 exit_code: 0
 stdout:
 Success. Updated the following files:
-M new-name.txt
+M new-name.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
 
 stderr:
 ```
@@ -472,9 +480,9 @@ b.txt 不存在
 exit_code: 0
 stdout:
 Success. Updated the following files:
-A b.txt
-M a.txt
-M c.txt
+A b.txt (before: 0 lines, 0 chars; after: 1 lines, 8 chars)
+M a.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
+M c.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
 
 stderr:
 ```
@@ -522,8 +530,8 @@ c.txt: old
 exit_code: 1
 stdout:
 Updated the following files:
-M a.txt
-M c.txt
+M a.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
+M c.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
 
 stderr:
 Failed to find expected lines in C:/work/example/b.txt:
@@ -575,7 +583,7 @@ c.txt: kept
 exit_code: 1
 stdout:
 Updated the following files:
-M b.txt
+M b.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
 
 stderr:
 Failed to find expected lines in C:/work/example/a.txt:
@@ -971,7 +979,7 @@ EOF
 exit_code: 0
 stdout:
 Success. Updated the following files:
-M target.txt
+M target.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
 
 stderr:
 ```
@@ -1013,7 +1021,7 @@ target.txt
 exit_code: 0
 stdout:
 Success. Updated the following files:
-M target.txt
+M target.txt (before: 1 lines, 9 chars; after: 1 lines, 4 chars)
 
 stderr:
 ```
@@ -1050,7 +1058,7 @@ PATCH_FILE=example.txt
 exit_code: 0
 stdout:
 Success. Updated the following files:
-A docs/example.txt
+A docs/example.txt (before: 0 lines, 0 chars; after: 1 lines, 6 chars)
 
 stderr:
 ```

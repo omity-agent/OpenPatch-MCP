@@ -14,6 +14,13 @@ impl<'cwd> FileWriter<'cwd> {
         fs::read_to_string(&source)
             .map_err(|error| io_context(&error, "Failed to read file to update", &source))
     }
+    pub(crate) fn read_file_to_delete(&self, path: &Path) -> anyhow::Result<String> {
+        let source = self.resolve(path);
+        ensure_not_directory(&source)
+            .map_err(|error| io_context(&error, "Failed to delete file", &source))?;
+        fs::read_to_string(&source)
+            .map_err(|error| io_context(&error, "Failed to read file to delete", &source))
+    }
     pub(crate) fn write_file(&self, path: &Path, contents: String) -> anyhow::Result<()> {
         let target = self.resolve(path);
         fs::write(&target, contents)
