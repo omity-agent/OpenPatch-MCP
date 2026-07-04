@@ -54,7 +54,7 @@ fn apply_hunk(
             chunks,
         } => {
             let original_contents = writer.read_file_to_update(&path)?;
-            let source = writer.resolve(&path)?;
+            let source = writer.resolve(&path);
             let derived = derive_new_contents(&source, &original_contents, &chunks);
             summary.errors.extend(derived.errors);
             if let Some(destination_path) = move_path {

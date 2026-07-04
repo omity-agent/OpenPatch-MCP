@@ -10,12 +10,12 @@ impl<'cwd> FileWriter<'cwd> {
         Self { cwd }
     }
     pub(crate) fn read_file_to_update(&self, path: &Path) -> anyhow::Result<String> {
-        let source = self.resolve(path)?;
+        let source = self.resolve(path);
         fs::read_to_string(&source)
             .map_err(|error| io_context(&error, "Failed to read file to update", &source))
     }
     pub(crate) fn write_file(&self, path: &Path, contents: String) -> anyhow::Result<()> {
-        let target = self.resolve(path)?;
+        let target = self.resolve(path);
         fs::write(&target, contents)
             .map_err(|error| io_context(&error, "Failed to write file", &target))
     }
@@ -24,7 +24,7 @@ impl<'cwd> FileWriter<'cwd> {
         path: &Path,
         contents: String,
     ) -> anyhow::Result<()> {
-        let target = self.resolve(path)?;
+        let target = self.resolve(path);
         match fs::write(&target, contents.as_bytes()) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
@@ -40,26 +40,25 @@ impl<'cwd> FileWriter<'cwd> {
         }
     }
     pub(crate) fn delete_file(&self, path: &Path) -> anyhow::Result<()> {
-        let target = self.resolve(path)?;
+        let target = self.resolve(path);
         ensure_not_directory(&target)
             .map_err(|error| io_context(&error, "Failed to delete file", &target))?;
         fs::remove_file(&target)
             .map_err(|error| io_context(&error, "Failed to delete file", &target))
     }
     pub(crate) fn delete_original(&self, path: &Path) -> anyhow::Result<()> {
-        let source = self.resolve(path)?;
+        let source = self.resolve(path);
         ensure_not_directory(&source)
             .map_err(|error| io_context(&error, "Failed to remove original", &source))?;
         fs::remove_file(&source)
             .map_err(|error| io_context(&error, "Failed to remove original", &source))
     }
-    pub(crate) fn resolve(&self, path: &Path) -> anyhow::Result<PathBuf> {
-        anyhow::ensure!(
-            path.is_relative(),
-            "patch paths must be relative: {}",
-            path.display()
-        );
-        Ok(self.cwd.join(path))
+    pub(crate) fn resolve(&self, path: &Path) -> PathBuf {
+        if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            self.cwd.join(path)
+        }
     }
 }
 fn ensure_not_directory(path: &Path) -> io::Result<()> {

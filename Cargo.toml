@@ -81,12 +81,21 @@ version = "0.0.0"
 edition = "2024"
 
 [dependencies]
-anyhow = "*"
-clap = { version = "*", features = ["derive"] }
-mimalloc = { version = "*", features = ["v3"] }
-rmcp = { version = "*", features = ["client", "server", "macros", "transport-io"] }
-schemars = "*"
-serde = { version = "*", features = ["derive"] }
+anyhow = ">=1.0.103"
+clap = { version = ">=4.6.1", features = ["derive"] }
+mimalloc = { version = ">=0.1.48", features = ["v3"] }
+rmcp = { version = ">=2.1.0", features = [
+    "client",
+    "server",
+    "macros",
+    "transport-io",
+] }
+schemars = ">=1.2.1"
+serde = { version = ">=1.0.228", features = ["derive"] }
 serde_json = "*"
-thiserror = "*"
-tokio = { version = "*", features = ["io-std", "macros", "rt-multi-thread"] }
+thiserror = ">=2.0.18"
+tokio = { version = ">=1.52.3", features = [
+    "io-std",
+    "macros",
+    "rt-multi-thread",
+] }

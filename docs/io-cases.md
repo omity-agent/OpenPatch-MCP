@@ -9,7 +9,7 @@
 }
 ```
 
-`cwd` 可以省略，省略时使用 MCP server 进程当前目录。所有 patch 内的文件路径都必须是相对路径。
+`cwd` 可以省略，省略时使用 MCP server 进程当前目录。patch 内的文件路径可以是相对路径或绝对路径；相对路径会基于 `cwd` 解析。
 
 返回文本统一为：
 
@@ -950,33 +950,7 @@ stderr:
 Failed to delete file C:/work/example/target: path is a directory
 ```
 
-## 29. 路径为绝对路径
-
-输入：
-
-```text
-*** Begin Patch
-*** Update File: C:/work/example/target.txt
-@@
--old
-+new
-*** End Patch
-```
-
-输出：
-
-```text
-exit_code: 1
-stdout:
-Updated the following files:
-
-stderr:
-patch paths must be relative: C:/work/example/target.txt
-```
-
-说明：`Add File`、`Update File`、`Delete File`、`Move to` 都只接受相对路径。
-
-## 30. heredoc 包装输入
+## 29. heredoc 包装输入
 
 输入：
 
@@ -1004,7 +978,7 @@ stderr:
 
 说明：外层 heredoc 包装会被识别并剥离。
 
-## 31. 匹配时允许的宽松规则
+## 30. 匹配时允许的宽松规则
 
 查找待替换旧内容时，会依次尝试：
 
