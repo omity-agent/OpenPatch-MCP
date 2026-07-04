@@ -99,6 +99,46 @@ mod tests {
         fs::remove_dir_all(directory).unwrap();
     }
     #[test]
+    fn failed_update_does_not_stop_following_files() {
+        let directory = unique_temp_directory().unwrap();
+        let first_path = directory.join("a.txt");
+        let second_path = directory.join("b.txt");
+        let third_path = directory.join("c.txt");
+        fs::write(&first_path, "old\n").unwrap();
+        fs::write(&second_path, "kept\n").unwrap();
+        fs::write(&third_path, "old\n").unwrap();
+        let patch = [
+            "*** Begin Patch",
+            "*** Update File: a.txt",
+            "@@",
+            "-old",
+            "+new",
+            "*** Update File: b.txt",
+            "@@",
+            "-missing",
+            "+changed",
+            "*** Update File: c.txt",
+            "@@",
+            "-old",
+            "+new",
+            "*** End Patch",
+            "",
+        ]
+        .join("\n");
+        let output = PatchRunner::apply(PatchExecution {
+            patch: &patch,
+            cwd: &directory,
+        });
+        assert!(!output.succeeded());
+        assert_eq!(fs::read_to_string(&first_path).unwrap(), "new\n");
+        assert_eq!(fs::read_to_string(&second_path).unwrap(), "kept\n");
+        assert_eq!(fs::read_to_string(&third_path).unwrap(), "new\n");
+        assert!(output.stdout.contains("M a.txt"));
+        assert!(output.stdout.contains("M c.txt"));
+        assert!(output.stderr.contains("Failed to find expected lines"));
+        fs::remove_dir_all(directory).unwrap();
+    }
+    #[test]
     fn delete_missing_file_reports_delete_context() {
         let directory = unique_temp_directory().unwrap();
         let patch = [

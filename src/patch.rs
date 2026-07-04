@@ -14,7 +14,7 @@ pub fn apply_patch_text(patch: &str, cwd: &Path) -> ApplyResult {
     match apply_patch_text_inner(patch, cwd) {
         Ok(summary) => ApplyResult {
             stdout: summary.render(),
-            stderr: String::new(),
+            stderr: summary.render_errors(),
         },
         Err(error) => ApplyResult {
             stdout: String::new(),
@@ -28,7 +28,9 @@ fn apply_patch_text_inner(patch: &str, cwd: &Path) -> anyhow::Result<Summary> {
     let writer = FileWriter::new(cwd);
     let mut summary = Summary::default();
     for hunk in hunks {
-        apply_hunk(&writer, hunk, &mut summary)?;
+        if let Err(error) = apply_hunk(&writer, hunk, &mut summary) {
+            summary.errors.push(error.to_string());
+        }
     }
     Ok(summary)
 }
@@ -71,10 +73,15 @@ struct Summary {
     added: Vec<PathBuf>,
     modified: Vec<PathBuf>,
     deleted: Vec<PathBuf>,
+    errors: Vec<String>,
 }
 impl Summary {
     fn render(&self) -> String {
-        let mut output = String::from("Success. Updated the following files:\n");
+        let mut output = if self.errors.is_empty() {
+            String::from("Success. Updated the following files:\n")
+        } else {
+            String::from("Updated the following files:\n")
+        };
         for path in &self.added {
             push_path_line(&mut output, 'A', path);
         }
@@ -83,6 +90,14 @@ impl Summary {
         }
         for path in &self.deleted {
             push_path_line(&mut output, 'D', path);
+        }
+        output
+    }
+    fn render_errors(&self) -> String {
+        let mut output = String::new();
+        for error in &self.errors {
+            output.push_str(error);
+            output.push('\n');
         }
         output
     }
