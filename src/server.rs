@@ -1,9 +1,4 @@
-use crate::{
-    cli::Cli,
-    command::{PatchExecution, PatchRunner, normalize_cwd},
-    config::Settings,
-    locator,
-};
+use crate::command::{PatchExecution, PatchRunner, normalize_cwd};
 use rmcp::{
     ErrorData as McpError, ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
@@ -13,7 +8,6 @@ use rmcp::{
 use serde::Deserialize;
 #[derive(Clone)]
 pub struct Application {
-    runner: PatchRunner,
     tool_router: ToolRouter<Self>,
 }
 #[derive(Debug, Deserialize, schemars :: JsonSchema)]
@@ -28,17 +22,15 @@ pub struct ApplyPatchRequest {
 #[tool_router]
 impl Application {
     #[inline]
-    pub async fn load(cli: Cli) -> anyhow::Result<Self> {
-        let settings = Settings::read(cli.config.as_deref()).await?;
-        let command = locator::resolve(&settings)?;
-        Ok(Self {
-            runner: PatchRunner::new(command),
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
             tool_router: Self::tool_router(),
-        })
+        }
     }
     #[tool(
         name = "apply_patch",
-        description = "Apply a Codex apply-patch patch by invoking the configured apply-patch executable."
+        description = "Apply a Codex apply-patch patch with the server's embedded implementation."
     )]
     async fn apply_patch(
         &self,
@@ -51,20 +43,22 @@ impl Application {
         }
         let cwd = normalize_cwd(request.cwd)
             .map_err(|error| McpError::invalid_params(error.to_string(), None))?;
-        let output = self
-            .runner
-            .apply(PatchExecution {
-                patch: &request.patch,
-                cwd: &cwd,
-            })
-            .await
-            .map_err(|error| McpError::internal_error(error.to_string(), None))?;
+        let output = PatchRunner::apply(PatchExecution {
+            patch: &request.patch,
+            cwd: &cwd,
+        });
         let content = vec![ContentBlock::text(output.render())];
         if output.succeeded() {
             Ok(CallToolResult::success(content))
         } else {
             Ok(CallToolResult::error(content))
         }
+    }
+}
+impl Default for Application {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
     }
 }
 # [tool_handler (router = self . tool_router)]
@@ -75,12 +69,8 @@ impl Application {
 )]
 impl ServerHandler for Application {}
 #[cfg(test)]
-#[expect(
-    clippy::inline_modules,
-    reason = "unit tests stay next to server internals"
-)]
 mod tests {
-    use super::{Application, Cli};
+    use super::Application;
     use rmcp::{
         ClientHandler, ServiceExt,
         model::{CallToolRequestParams, ClientRequest, Request},
@@ -98,11 +88,11 @@ mod tests {
     )]
     impl ClientHandler for TestClient {}
     #[tokio::test]
-    async fn mcp_call_applies_multiline_patch_with_real_executable() {
+    async fn mcp_call_applies_multiline_patch_with_embedded_runner() {
         let directory = unique_temp_directory().unwrap();
         let target_path = directory.join("target.txt");
         fs::write(&target_path, "old\n").unwrap();
-        let application = Application::load(Cli { config: None }).await.unwrap();
+        let application = Application::new();
         let (server_transport, client_transport) = tokio::io::duplex(8192);
         let server_handle = tokio::spawn(async move {
             let service = ServiceExt::serve(application, server_transport).await?;

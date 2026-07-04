@@ -1,5 +1,6 @@
 pub mod cli;
 mod command;
-mod config;
-mod locator;
+mod parser;
+mod patch;
+mod seek_sequence;
 pub mod server;
