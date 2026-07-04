@@ -37,13 +37,14 @@ fn compute_replacements(
     path: &Path,
     chunks: &[UpdateChunk],
 ) -> ReplacementPlan {
+    let search_index = seek_sequence::LineSearchIndex::new(original_lines);
     let mut replacements = Vec::new();
     let mut errors = Vec::new();
     let mut applied_chunks = 0;
     let mut line_index = 0;
     for chunk in chunks {
         if let Some(context_line) = chunk.change_context.as_ref() {
-            match seek_context(original_lines, path, context_line, line_index) {
+            match seek_context(&search_index, path, context_line, line_index) {
                 Ok(index) => line_index = index,
                 Err(error) => {
                     errors.push(error.to_string());
@@ -51,7 +52,7 @@ fn compute_replacements(
                 }
             }
         }
-        match make_replacement(original_lines, path, chunk, line_index) {
+        match make_replacement(original_lines, &search_index, path, chunk, line_index) {
             Ok((replacement, next_line_index)) => {
                 replacements.push(replacement);
                 line_index = next_line_index;
@@ -68,17 +69,12 @@ fn compute_replacements(
     }
 }
 fn seek_context(
-    original_lines: &[String],
+    search_index: &seek_sequence::LineSearchIndex,
     path: &Path,
     context_line: &String,
     line_index: usize,
 ) -> anyhow::Result<usize> {
-    if let Some(index) = seek_sequence::seek_sequence(
-        original_lines,
-        core::slice::from_ref(context_line),
-        line_index,
-        false,
-    ) {
+    if let Some(index) = search_index.seek(core::slice::from_ref(context_line), line_index, false) {
         Ok(index + 1)
     } else {
         anyhow::bail!(
@@ -89,6 +85,7 @@ fn seek_context(
 }
 fn make_replacement(
     original_lines: &[String],
+    search_index: &seek_sequence::LineSearchIndex,
     path: &Path,
     chunk: &UpdateChunk,
     line_index: usize,
@@ -106,8 +103,7 @@ fn make_replacement(
     }
     let mut pattern = chunk.old_lines.as_slice();
     let mut new_slice = chunk.new_lines.as_slice();
-    let mut found =
-        seek_sequence::seek_sequence(original_lines, pattern, line_index, chunk.is_end_of_file);
+    let mut found = search_index.seek(pattern, line_index, chunk.is_end_of_file);
     if found.is_none() && pattern.last().is_some_and(String::is_empty) {
         if let Some((_, prefix)) = pattern.split_last() {
             pattern = prefix;
@@ -117,8 +113,7 @@ fn make_replacement(
         {
             new_slice = prefix;
         }
-        found =
-            seek_sequence::seek_sequence(original_lines, pattern, line_index, chunk.is_end_of_file);
+        found = search_index.seek(pattern, line_index, chunk.is_end_of_file);
     }
     if let Some(start_index) = found {
         Ok((
