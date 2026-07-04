@@ -7,21 +7,22 @@ pub(super) fn expand_variables<EnvLookup>(
 where
     EnvLookup: Fn(&str) -> VariableValue,
 {
-    let mut output = String::new();
+    let mut output = String::with_capacity(path.len());
     let mut cursor = 0;
     while cursor < path.len() {
         let path_tail = slice_from(path, cursor);
-        let Some((offset, marker)) = path_tail
-            .char_indices()
-            .find(|&(_, character)| character == '$' || character == '%')
-        else {
+        let Some(offset) = memchr::memchr2(b'$', b'%', path_tail.as_bytes()) else {
             output.push_str(path_tail);
             break;
         };
         let marker_index = cursor + offset;
         output.push_str(slice_between(path, cursor, marker_index));
-        let next_index = marker_index + marker.len_utf8();
-        cursor = if marker == '$' {
+        let Some(marker) = path_tail.as_bytes().get(offset).copied() else {
+            output.push_str(path_tail);
+            break;
+        };
+        let next_index = marker_index + 1;
+        cursor = if marker == b'$' {
             expand_unix_variable(path, original_path, next_index, &env_lookup, &mut output)?
         } else {
             expand_windows_variable(path, original_path, next_index, &env_lookup, &mut output)?
@@ -115,13 +116,14 @@ where
     Ok(())
 }
 fn consume_unix_variable_name(path: &str, start_index: usize) -> usize {
-    slice_from(path, start_index)
-        .char_indices()
-        .take_while(|&(_, character)| character.is_ascii_alphanumeric() || character == '_')
-        .last()
-        .map_or(start_index, |(offset, character)| {
-            start_index + offset + character.len_utf8()
-        })
+    let mut cursor = start_index;
+    for byte in slice_from(path, start_index).as_bytes() {
+        if !byte.is_ascii_alphanumeric() && *byte != b'_' {
+            break;
+        }
+        cursor += 1;
+    }
+    cursor
 }
 fn slice_from(value: &str, start: usize) -> &str {
     let Some(slice) = value.get(start..) else {
@@ -136,8 +138,15 @@ fn slice_between(value: &str, start: usize, end: usize) -> &str {
     slice
 }
 fn is_windows_variable_name(name: &str) -> bool {
-    !name.is_empty()
-        && name
-            .chars()
-            .all(|character| !character.is_whitespace() && character != '/' && character != '\\')
+    if name.is_empty() {
+        return false;
+    }
+    if name.is_ascii() {
+        return name
+            .as_bytes()
+            .iter()
+            .all(|byte| !byte.is_ascii_whitespace() && !matches!(*byte, b'/' | b'\\'));
+    }
+    name.chars()
+        .all(|character| !character.is_whitespace() && character != '/' && character != '\\')
 }

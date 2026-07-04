@@ -42,17 +42,22 @@ fn apply_hunk(
     summary: &mut Summary,
 ) -> anyhow::Result<()> {
     match hunk {
-        FileHunk::Add { path, contents } => {
-            let after = FileStats::from_contents(&contents);
+        FileHunk::Add {
+            path,
+            contents,
+            line_count,
+            character_count,
+        } => {
+            let after = FileStats::from_counts(line_count, character_count);
             writer.write_with_parent_retry(&path, contents)?;
             summary
                 .added
                 .push(FileChange::new(path, FileStats::empty(), after));
         }
         FileHunk::Delete { path } => {
-            let original_contents = writer.read_file_to_delete(&path)?;
+            let (target, original_contents) = writer.read_file_to_delete(&path)?;
             let before = FileStats::from_contents(&original_contents);
-            writer.delete_file(&path)?;
+            FileWriter::delete_resolved_file(&target)?;
             summary
                 .deleted
                 .push(FileChange::new(path, before, FileStats::empty()));
@@ -62,22 +67,33 @@ fn apply_hunk(
             move_path,
             chunks,
         } => {
-            let original_contents = writer.read_file_to_update(&path)?;
-            let before = FileStats::from_contents(&original_contents);
-            let source = writer.resolve(&path);
+            let (source, original_contents) = writer.read_file_to_update(&path)?;
+            if chunks.is_empty() {
+                let before = FileStats::from_contents(&original_contents);
+                if let Some(destination_path) = move_path {
+                    writer.write_with_parent_retry(&destination_path, original_contents)?;
+                    FileWriter::delete_resolved_original(&source)?;
+                    summary
+                        .modified
+                        .push(FileChange::new(destination_path, before, before));
+                }
+                return Ok(());
+            }
             let derived = derive_new_contents(&source, &original_contents, &chunks);
-            let after = FileStats::from_contents(&derived.contents);
+            let before = derived.before;
             summary.errors.extend(derived.errors);
             if let Some(destination_path) = move_path {
-                if chunks.is_empty() || derived.applied_chunks > 0 {
+                if derived.applied_chunks > 0 {
+                    let after = FileStats::from_contents(&derived.contents);
                     writer.write_with_parent_retry(&destination_path, derived.contents)?;
-                    writer.delete_original(&path)?;
+                    FileWriter::delete_resolved_original(&source)?;
                     summary
                         .modified
                         .push(FileChange::new(destination_path, before, after));
                 }
             } else if derived.applied_chunks > 0 {
-                writer.write_file(&path, derived.contents)?;
+                let after = FileStats::from_contents(&derived.contents);
+                FileWriter::write_resolved_file(&source, derived.contents)?;
                 summary.modified.push(FileChange::new(path, before, after));
             }
         }

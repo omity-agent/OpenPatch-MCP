@@ -1,18 +1,22 @@
+use core::fmt::Write as _;
+use smallvec::SmallVec;
 use std::path::PathBuf;
+type FileChanges = SmallVec<[FileChange; 1]>;
 #[derive(Debug, Default)]
 pub(crate) struct Summary {
-    pub(crate) added: Vec<FileChange>,
-    pub(crate) modified: Vec<FileChange>,
-    pub(crate) deleted: Vec<FileChange>,
+    pub(crate) added: FileChanges,
+    pub(crate) modified: FileChanges,
+    pub(crate) deleted: FileChanges,
     pub(crate) errors: Vec<String>,
 }
 impl Summary {
     pub(crate) fn render(&self) -> String {
-        let mut output = if self.errors.is_empty() {
-            String::from("Success. Updated the following files:\n")
+        let mut output = String::with_capacity(self.render_capacity());
+        if self.errors.is_empty() {
+            output.push_str("Success. Updated the following files:\n");
         } else {
-            String::from("Updated the following files:\n")
-        };
+            output.push_str("Updated the following files:\n");
+        }
         for change in &self.added {
             push_change_line(&mut output, 'A', change);
         }
@@ -25,12 +29,22 @@ impl Summary {
         output
     }
     pub(crate) fn render_errors(&self) -> String {
-        let mut output = String::new();
+        let mut output = String::with_capacity(
+            self.errors.iter().map(String::len).sum::<usize>() + self.errors.len(),
+        );
         for error in &self.errors {
             output.push_str(error);
             output.push('\n');
         }
         output
+    }
+    fn render_capacity(&self) -> usize {
+        let header = if self.errors.is_empty() {
+            "Success. Updated the following files:\n".len()
+        } else {
+            "Updated the following files:\n".len()
+        };
+        header + (self.added.len() + self.modified.len() + self.deleted.len()) * 96
     }
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,6 +68,12 @@ pub(crate) struct FileStats {
     character_count: usize,
 }
 impl FileStats {
+    pub(crate) const fn from_counts(line_count: usize, character_count: usize) -> Self {
+        Self {
+            line_count,
+            character_count,
+        }
+    }
     pub(crate) const fn empty() -> Self {
         Self {
             line_count: 0,
@@ -61,36 +81,40 @@ impl FileStats {
         }
     }
     pub(crate) fn from_contents(contents: &str) -> Self {
+        if contents.is_empty() {
+            return Self::empty();
+        }
+        if contents.is_ascii() {
+            return Self::from_ascii_contents(contents);
+        }
+        let newline_count = bytecount::count(contents.as_bytes(), b'\n');
+        let character_count = bytecount::num_chars(contents.as_bytes());
         Self {
-            line_count: line_count(contents),
-            character_count: contents.chars().count(),
+            line_count: newline_count + usize::from(!contents.ends_with('\n')),
+            character_count,
+        }
+    }
+    fn from_ascii_contents(contents: &str) -> Self {
+        let newline_count = bytecount::count(contents.as_bytes(), b'\n');
+        Self {
+            line_count: newline_count + usize::from(!contents.ends_with('\n')),
+            character_count: contents.len(),
         }
     }
 }
-fn line_count(contents: &str) -> usize {
-    if contents.is_empty() {
-        return 0;
-    }
-    let line_count = contents.split('\n').count();
-    if contents.ends_with('\n') {
-        line_count - 1
-    } else {
-        line_count
-    }
-}
 fn push_change_line(output: &mut String, marker: char, change: &FileChange) {
-    output.push(marker);
-    output.push(' ');
-    output.push_str(&change.path.display().to_string());
-    output.push_str(" (before: ");
+    if let Err(error) = write!(output, "{marker} {} (before: ", change.path.display()) {
+        panic!("writing to String failed: {error}");
+    }
     push_stats(output, change.before);
     output.push_str("; after: ");
     push_stats(output, change.after);
     output.push_str(")\n");
 }
 fn push_stats(output: &mut String, stats: FileStats) {
-    output.push_str(&stats.line_count.to_string());
+    let mut buffer = itoa::Buffer::new();
+    output.push_str(buffer.format(stats.line_count));
     output.push_str(" lines, ");
-    output.push_str(&stats.character_count.to_string());
+    output.push_str(buffer.format(stats.character_count));
     output.push_str(" chars");
 }

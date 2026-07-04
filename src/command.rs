@@ -34,15 +34,21 @@ impl PatchOutput {
     }
     #[must_use]
     pub fn render(&self) -> String {
-        format!(
-            "exit_code: {}\nstdout:\n{}\nstderr:\n{}",
-            self.status.map_or_else(
-                || String::from("terminated by signal"),
-                |status| status.to_string()
-            ),
-            self.stdout,
-            self.stderr
-        )
+        let mut output = String::with_capacity(
+            "exit_code: \nstdout:\n\nstderr:\n".len() + self.stdout.len() + self.stderr.len() + 11,
+        );
+        output.push_str("exit_code: ");
+        if let Some(status) = self.status {
+            let mut buffer = itoa::Buffer::new();
+            output.push_str(buffer.format(status));
+        } else {
+            output.push_str("terminated by signal");
+        }
+        output.push_str("\nstdout:\n");
+        output.push_str(&self.stdout);
+        output.push_str("\nstderr:\n");
+        output.push_str(&self.stderr);
+        output
     }
 }
 pub fn normalize_cwd(cwd: Option<String>) -> anyhow::Result<PathBuf> {

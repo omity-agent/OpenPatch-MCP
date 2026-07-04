@@ -11,7 +11,7 @@ pub fn parse_patch(patch: &str) -> Result<Vec<FileHunk>, ParseFailure> {
     boundary::parse_patch_lines(patch)
 }
 pub(crate) fn parse_hunks(lines: &[&str]) -> Result<Vec<FileHunk>, ParseFailure> {
-    let mut hunks = Vec::new();
+    let mut hunks = Vec::with_capacity(lines.len().saturating_div(3));
     let mut index = 1;
     while index + 1 < lines.len() {
         let Some(line) = lines.get(index).copied() else {
@@ -44,7 +44,9 @@ fn parse_add(
     marker_index: usize,
     path: &str,
 ) -> Result<(FileHunk, usize), ParseFailure> {
-    let mut contents = Vec::new();
+    let mut contents = String::new();
+    let mut line_count = 0;
+    let mut character_count = 0;
     let mut index = marker_index + 1;
     while index + 1 < lines.len() {
         let Some(line) = lines.get(index).copied() else {
@@ -59,13 +61,18 @@ fn parse_add(
                 "add file lines must start with '+'",
             ));
         };
-        contents.push(content.to_owned());
+        contents.push_str(content);
+        contents.push('\n');
+        line_count += 1;
+        character_count += line_character_count(content) + 1;
         index += 1;
     }
     Ok((
         FileHunk::Add {
             path: parse_path(path, marker_index)?,
-            contents: finish_lines(&contents),
+            contents,
+            line_count,
+            character_count,
         },
         index,
     ))
@@ -126,8 +133,8 @@ fn parse_chunk(
     start_index: usize,
     change_context: Option<String>,
 ) -> Result<(UpdateChunk, usize), ParseFailure> {
-    let mut old_lines = Vec::new();
-    let mut new_lines = Vec::new();
+    let mut old_lines = crate::parser::ChunkLines::new();
+    let mut new_lines = crate::parser::ChunkLines::new();
     let mut is_end_of_file = false;
     let mut index = start_index;
     while index + 1 < lines.len() {
@@ -137,15 +144,17 @@ fn parse_chunk(
         if is_file_marker(line) || is_chunk_marker(line) {
             break;
         }
-        match line.split_at_checked(1) {
-            Some((" ", content)) => {
-                old_lines.push(content.to_owned());
-                new_lines.push(content.to_owned());
-            }
-            Some(("-", content)) => old_lines.push(content.to_owned()),
-            Some(("+", content)) => new_lines.push(content.to_owned()),
-            _ if line == EOF_MARKER => is_end_of_file = true,
-            _ => return Err(ParseFailure::hunk(index + 1, "expected change line prefix")),
+        if line == EOF_MARKER {
+            is_end_of_file = true;
+        } else if let Some(content) = line.strip_prefix(' ') {
+            old_lines.push(content.to_owned());
+            new_lines.push(content.to_owned());
+        } else if let Some(content) = line.strip_prefix('-') {
+            old_lines.push(content.to_owned());
+        } else if let Some(content) = line.strip_prefix('+') {
+            new_lines.push(content.to_owned());
+        } else {
+            return Err(ParseFailure::hunk(index + 1, "expected change line prefix"));
         }
         index += 1;
     }
@@ -170,10 +179,10 @@ fn is_chunk_marker(line: &str) -> bool {
 fn parse_path(path: &str, marker_index: usize) -> Result<PathBuf, ParseFailure> {
     expand_path(path).map_err(|error| ParseFailure::hunk(marker_index + 1, &error.to_string()))
 }
-fn finish_lines(lines: &[String]) -> String {
-    if lines.is_empty() {
-        String::new()
+fn line_character_count(line: &str) -> usize {
+    if line.is_ascii() {
+        line.len()
     } else {
-        format!("{}\n", lines.join("\n"))
+        bytecount::num_chars(line.as_bytes())
     }
 }

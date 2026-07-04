@@ -1,5 +1,6 @@
 mod boundary;
 mod parse;
+use smallvec::SmallVec;
 use std::path::PathBuf;
 pub(crate) const BEGIN_PATCH_MARKER: &str = "*** Begin Patch";
 pub(crate) const END_PATCH_MARKER: &str = "*** End Patch";
@@ -18,6 +19,8 @@ pub enum FileHunk {
     Add {
         path: PathBuf,
         contents: String,
+        line_count: usize,
+        character_count: usize,
     },
     Delete {
         path: PathBuf,
@@ -31,10 +34,11 @@ pub enum FileHunk {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpdateChunk {
     pub change_context: Option<String>,
-    pub old_lines: Vec<String>,
-    pub new_lines: Vec<String>,
+    pub old_lines: ChunkLines,
+    pub new_lines: ChunkLines,
     pub is_end_of_file: bool,
 }
+pub(crate) type ChunkLines = SmallVec<[String; 4]>;
 #[derive(Debug, Clone, PartialEq, Eq, thiserror :: Error)]
 pub enum ParseFailure {
     #[error("Invalid patch: {0}")]

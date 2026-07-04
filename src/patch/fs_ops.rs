@@ -9,22 +9,22 @@ impl<'cwd> FileWriter<'cwd> {
     pub(crate) const fn new(cwd: &'cwd Path) -> Self {
         Self { cwd }
     }
-    pub(crate) fn read_file_to_update(&self, path: &Path) -> anyhow::Result<String> {
+    pub(crate) fn read_file_to_update(&self, path: &Path) -> anyhow::Result<(PathBuf, String)> {
         let source = self.resolve(path);
-        fs::read_to_string(&source)
-            .map_err(|error| io_context(&error, "Failed to read file to update", &source))
+        let contents = fs::read_to_string(&source)
+            .map_err(|error| io_context(&error, "Failed to read file to update", &source))?;
+        Ok((source, contents))
     }
-    pub(crate) fn read_file_to_delete(&self, path: &Path) -> anyhow::Result<String> {
+    pub(crate) fn read_file_to_delete(&self, path: &Path) -> anyhow::Result<(PathBuf, String)> {
         let source = self.resolve(path);
         ensure_not_directory(&source)
             .map_err(|error| io_context(&error, "Failed to delete file", &source))?;
-        fs::read_to_string(&source)
-            .map_err(|error| io_context(&error, "Failed to read file to delete", &source))
+        let contents = fs::read_to_string(&source)
+            .map_err(|error| io_context(&error, "Failed to read file to delete", &source))?;
+        Ok((source, contents))
     }
-    pub(crate) fn write_file(&self, path: &Path, contents: String) -> anyhow::Result<()> {
-        let target = self.resolve(path);
-        fs::write(&target, contents)
-            .map_err(|error| io_context(&error, "Failed to write file", &target))
+    pub(crate) fn write_resolved_file(target: &Path, contents: String) -> anyhow::Result<()> {
+        write_resolved_file(target, contents)
     }
     pub(crate) fn write_with_parent_retry(
         &self,
@@ -32,33 +32,13 @@ impl<'cwd> FileWriter<'cwd> {
         contents: String,
     ) -> anyhow::Result<()> {
         let target = self.resolve(path);
-        match fs::write(&target, contents.as_bytes()) {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                if let Some(parent) = target.parent() {
-                    fs::create_dir_all(parent).map_err(|source| {
-                        io_context(&source, "Failed to create parent directories for", &target)
-                    })?;
-                }
-                fs::write(&target, contents)
-                    .map_err(|source| io_context(&source, "Failed to write file", &target))
-            }
-            Err(error) => Err(io_context(&error, "Failed to write file", &target)),
-        }
+        write_resolved_with_parent_retry(&target, contents)
     }
-    pub(crate) fn delete_file(&self, path: &Path) -> anyhow::Result<()> {
-        let target = self.resolve(path);
-        ensure_not_directory(&target)
-            .map_err(|error| io_context(&error, "Failed to delete file", &target))?;
-        fs::remove_file(&target)
-            .map_err(|error| io_context(&error, "Failed to delete file", &target))
+    pub(crate) fn delete_resolved_file(target: &Path) -> anyhow::Result<()> {
+        delete_resolved_file(target, "Failed to delete file")
     }
-    pub(crate) fn delete_original(&self, path: &Path) -> anyhow::Result<()> {
-        let source = self.resolve(path);
-        ensure_not_directory(&source)
-            .map_err(|error| io_context(&error, "Failed to remove original", &source))?;
-        fs::remove_file(&source)
-            .map_err(|error| io_context(&error, "Failed to remove original", &source))
+    pub(crate) fn delete_resolved_original(source: &Path) -> anyhow::Result<()> {
+        delete_resolved_file(source, "Failed to remove original")
     }
     pub(crate) fn resolve(&self, path: &Path) -> PathBuf {
         if path.is_absolute() {
@@ -67,6 +47,28 @@ impl<'cwd> FileWriter<'cwd> {
             self.cwd.join(path)
         }
     }
+}
+fn write_resolved_file(target: &Path, contents: String) -> anyhow::Result<()> {
+    fs::write(target, contents).map_err(|error| io_context(&error, "Failed to write file", target))
+}
+fn write_resolved_with_parent_retry(target: &Path, contents: String) -> anyhow::Result<()> {
+    match fs::write(target, contents.as_bytes()) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent).map_err(|source| {
+                    io_context(&source, "Failed to create parent directories for", target)
+                })?;
+            }
+            fs::write(target, contents)
+                .map_err(|source| io_context(&source, "Failed to write file", target))
+        }
+        Err(error) => Err(io_context(&error, "Failed to write file", target)),
+    }
+}
+fn delete_resolved_file(target: &Path, action: &str) -> anyhow::Result<()> {
+    ensure_not_directory(target).map_err(|error| io_context(&error, action, target))?;
+    fs::remove_file(target).map_err(|error| io_context(&error, action, target))
 }
 fn ensure_not_directory(path: &Path) -> io::Result<()> {
     if fs::metadata(path)?.is_dir() {

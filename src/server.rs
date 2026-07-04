@@ -112,7 +112,13 @@ mod tests {
             "",
         ]
         .join("\n");
-        let result = client . peer () . send_request (ClientRequest :: CallToolRequest (Request :: new (CallToolRequestParams :: new ("apply_patch") . with_arguments (rmcp :: object ! ({ "patch" : patch , "cwd" : directory . display () . to_string () })) ,))) . await . unwrap () ;
+        let arguments = rmcp::model::object(
+            rmcp :: serde_json :: json ! ({ "patch" : patch , "cwd" : directory . display () . to_string () , }),
+        );
+        let request = ClientRequest::CallToolRequest(Request::new(
+            CallToolRequestParams::new("apply_patch").with_arguments(arguments),
+        ));
+        let result = client.peer().send_request(request).await.unwrap();
         let rmcp::model::ServerResult::CallToolResult(tool_result) = result else {
             panic!("expected call tool result");
         };

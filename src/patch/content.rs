@@ -1,9 +1,11 @@
-use crate::{parser::UpdateChunk, seek_sequence};
+use crate::{parser::UpdateChunk, patch::summary::FileStats, seek_sequence};
 use replacements::{Replacement, apply_replacements};
+use smallvec::SmallVec;
 use std::path::Path;
 mod replacements;
 pub(crate) struct DerivedContents {
     pub(crate) contents: String,
+    pub(crate) before: FileStats,
     pub(crate) applied_chunks: usize,
     pub(crate) errors: Vec<String>,
 }
@@ -12,29 +14,37 @@ pub(crate) fn derive_new_contents(
     original_contents: &str,
     chunks: &[UpdateChunk],
 ) -> DerivedContents {
-    let mut original_lines: Vec<&str> = original_contents.split('\n').collect();
-    if original_lines.last().is_some_and(|line| line.is_empty()) {
-        original_lines.pop();
-    }
-    let plan = compute_replacements(&original_lines, path, chunks);
+    let line_analysis = split_lines(original_contents);
+    let plan = compute_replacements(&line_analysis.lines, path, chunks);
+    let contents = if plan.replacements.is_empty() {
+        String::new()
+    } else {
+        apply_replacements(
+            original_contents,
+            &line_analysis.lines,
+            &line_analysis.offsets,
+            &plan.replacements,
+        )
+    };
     DerivedContents {
-        contents: apply_replacements(original_contents, &original_lines, &plan.replacements),
+        contents,
+        before: line_analysis.stats,
         applied_chunks: plan.applied_chunks,
         errors: plan.errors,
     }
 }
-struct ReplacementPlan {
-    replacements: Vec<Replacement>,
+struct ReplacementPlan<'chunk> {
+    replacements: SmallVec<[Replacement<'chunk>; 4]>,
     applied_chunks: usize,
     errors: Vec<String>,
 }
-fn compute_replacements(
+fn compute_replacements<'chunk>(
     original_lines: &[&str],
     path: &Path,
-    chunks: &[UpdateChunk],
-) -> ReplacementPlan {
+    chunks: &'chunk [UpdateChunk],
+) -> ReplacementPlan<'chunk> {
     let mut search_index = seek_sequence::LineSearchIndex::new(original_lines);
-    let mut replacements = Vec::new();
+    let mut replacements = SmallVec::with_capacity(chunks.len());
     let mut errors = Vec::new();
     let mut applied_chunks = 0;
     let mut line_index = 0;
@@ -57,7 +67,6 @@ fn compute_replacements(
             Err(error) => errors.push(error.to_string()),
         }
     }
-    replacements.sort_by_key(|replacement| replacement.0);
     ReplacementPlan {
         replacements,
         applied_chunks,
@@ -81,13 +90,13 @@ fn seek_context(
         );
     }
 }
-fn make_replacement(
+fn make_replacement<'chunk>(
     original_lines: &[&str],
     search_index: &mut seek_sequence::LineSearchIndex<'_, '_>,
     path: &Path,
-    chunk: &UpdateChunk,
+    chunk: &'chunk UpdateChunk,
     line_index: usize,
-) -> anyhow::Result<(Replacement, usize)> {
+) -> anyhow::Result<(Replacement<'chunk>, usize)> {
     if chunk.old_lines.is_empty() {
         let insertion_index = if original_lines.last().is_some_and(|line| line.is_empty()) {
             original_lines.len() - 1
@@ -95,7 +104,7 @@ fn make_replacement(
             original_lines.len()
         };
         return Ok((
-            (insertion_index, 0, chunk.new_lines.clone()),
+            (insertion_index, 0, chunk.new_lines.as_slice()),
             insertion_index,
         ));
     }
@@ -115,11 +124,7 @@ fn make_replacement(
     }
     if let Some(sequence_match) = found {
         Ok((
-            (
-                sequence_match.start,
-                sequence_match.length,
-                new_slice.to_vec(),
-            ),
+            (sequence_match.start, sequence_match.length, new_slice),
             sequence_match.start + sequence_match.length,
         ))
     } else {
@@ -128,6 +133,42 @@ fn make_replacement(
             path.display(),
             chunk.old_lines.join("\n")
         );
+    }
+}
+struct LineAnalysis<'content> {
+    lines: Vec<&'content str>,
+    offsets: Vec<usize>,
+    stats: FileStats,
+}
+fn split_lines(contents: &str) -> LineAnalysis<'_> {
+    let line_capacity =
+        bytecount::count(contents.as_bytes(), b'\n') + usize::from(!contents.ends_with('\n'));
+    let mut lines = Vec::with_capacity(line_capacity);
+    let mut offsets = Vec::with_capacity(line_capacity);
+    let mut start = 0;
+    for index in memchr::memchr_iter(b'\n', contents.as_bytes()) {
+        if let Some(line) = contents.get(start..index) {
+            lines.push(line);
+            offsets.push(start);
+        }
+        start = index + 1;
+    }
+    if start < contents.len()
+        && let Some(line) = contents.get(start..)
+    {
+        lines.push(line);
+        offsets.push(start);
+    }
+    let character_count = if contents.is_ascii() {
+        contents.len()
+    } else {
+        bytecount::num_chars(contents.as_bytes())
+    };
+    let stats = FileStats::from_counts(lines.len(), character_count);
+    LineAnalysis {
+        lines,
+        offsets,
+        stats,
     }
 }
 #[cfg(test)]

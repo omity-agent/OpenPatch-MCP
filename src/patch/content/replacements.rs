@@ -1,10 +1,10 @@
-pub(super) type Replacement = (usize, usize, Vec<String>);
+pub(super) type Replacement<'new> = (usize, usize, &'new [String]);
 pub(super) fn apply_replacements(
     original_contents: &str,
     lines: &[&str],
-    replacements: &[Replacement],
+    offsets: &[usize],
+    replacements: &[Replacement<'_>],
 ) -> String {
-    let offsets = line_offsets(lines);
     let mut result = String::with_capacity(original_contents.len());
     let mut source_index = 0;
     let mut line_written = false;
@@ -21,7 +21,7 @@ pub(super) fn apply_replacements(
             &OriginalSpan {
                 contents: original_contents,
                 lines,
-                offsets: &offsets,
+                offsets,
                 start: source_index,
                 end: start_index,
             },
@@ -30,7 +30,7 @@ pub(super) fn apply_replacements(
         );
         append_replacement_lines(
             &mut result,
-            &replacement.2,
+            replacement.2,
             &mut line_written,
             &mut last_line_empty,
         );
@@ -44,7 +44,7 @@ pub(super) fn apply_replacements(
         &OriginalSpan {
             contents: original_contents,
             lines,
-            offsets: &offsets,
+            offsets,
             start: source_index,
             end: lines.len(),
         },
@@ -83,22 +83,21 @@ fn append_original_span(
         panic!("line start offset must exist");
     };
     let last_line_index = span.end - 1;
-    let Some(last_line) = span.lines.get(last_line_index) else {
-        panic!("last line in original span must exist");
-    };
-    let Some(byte_end) = span
-        .offsets
-        .get(last_line_index)
-        .and_then(|line_start| line_start.checked_add(last_line.len()))
-    else {
-        panic!("line end offset must exist");
-    };
+    let byte_end = original_span_byte_end(span, last_line_index);
     let Some(original_slice) = span.contents.get(byte_start..byte_end) else {
         panic!("line byte range must be valid");
     };
     result.push_str(original_slice);
     *line_written = true;
-    *last_line_empty = last_line.is_empty();
+    *last_line_empty = byte_start == byte_end;
+}
+fn original_span_byte_end(span: &OriginalSpan<'_, '_, '_>, last_line_index: usize) -> usize {
+    if let Some(next_offset) = span.offsets.get(last_line_index + 1).copied() {
+        return next_offset.saturating_sub(1);
+    }
+    span.contents
+        .len()
+        .saturating_sub(usize::from(span.contents.ends_with('\n')))
 }
 fn append_replacement_lines(
     result: &mut String,
@@ -114,13 +113,4 @@ fn append_replacement_lines(
         *line_written = true;
         *last_line_empty = line.is_empty();
     }
-}
-fn line_offsets(lines: &[&str]) -> Vec<usize> {
-    let mut offsets = Vec::with_capacity(lines.len());
-    let mut offset = 0;
-    for line in lines {
-        offsets.push(offset);
-        offset += line.len() + 1;
-    }
-    offsets
 }

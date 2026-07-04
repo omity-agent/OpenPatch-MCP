@@ -1,6 +1,9 @@
 use alloc::borrow::Cow;
 pub(super) fn normalize(source: &str) -> Cow<'_, str> {
     let trimmed = source.trim();
+    if trimmed.is_ascii() {
+        return Cow::Borrowed(trimmed);
+    }
     let mut normalized: Option<String> = None;
     for (index, character) in trimmed.char_indices() {
         let replacement = normalize_character(character);

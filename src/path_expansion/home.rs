@@ -26,6 +26,9 @@ where
         let mut characters = path.chars();
         let _tilde = characters.next();
         let remainder = characters.as_str();
-        Ok(format!("{home_string}{remainder}"))
+        let mut output = String::with_capacity(home_string.len() + remainder.len());
+        output.push_str(&home_string);
+        output.push_str(remainder);
+        Ok(output)
     }
 }

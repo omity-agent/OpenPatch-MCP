@@ -5,8 +5,8 @@ use std::path::Path;
 fn insertion_without_old_lines_precedes_logical_trailing_empty_line() {
     let chunk = UpdateChunk {
         change_context: None,
-        old_lines: Vec::new(),
-        new_lines: vec![String::from("b")],
+        old_lines: Vec::new().into(),
+        new_lines: vec![String::from("b")].into(),
         is_end_of_file: false,
     };
     let result = derive_new_contents(Path::new("target.txt"), "a\n\n", &[chunk]);
@@ -18,8 +18,8 @@ fn insertion_without_old_lines_precedes_logical_trailing_empty_line() {
 fn replacement_can_ignore_empty_lines_in_original() {
     let chunk = UpdateChunk {
         change_context: None,
-        old_lines: vec![String::from("a"), String::from("b")],
-        new_lines: vec![String::from("updated")],
+        old_lines: vec![String::from("a"), String::from("b")].into(),
+        new_lines: vec![String::from("updated")].into(),
         is_end_of_file: false,
     };
     let result = derive_new_contents(Path::new("target.txt"), "a\n\nb\nc\n", &[chunk]);
@@ -31,8 +31,8 @@ fn replacement_can_ignore_empty_lines_in_original() {
 fn replacement_can_ignore_consecutive_space_counts() {
     let chunk = UpdateChunk {
         change_context: None,
-        old_lines: vec![String::from("a b"), String::from("c d")],
-        new_lines: vec![String::from("updated")],
+        old_lines: vec![String::from("a b"), String::from("c d")].into(),
+        new_lines: vec![String::from("updated")].into(),
         is_end_of_file: false,
     };
     let result = derive_new_contents(Path::new("target.txt"), "a  b\n\nc   d\n", &[chunk]);
@@ -47,11 +47,21 @@ fn replacements_are_applied_in_one_forward_pass() {
         .collect::<Vec<_>>();
     let original_lines = owned_lines.iter().map(String::as_str).collect::<Vec<_>>();
     let original_contents = owned_lines.join("\n");
+    let offsets = line_offsets(&original_lines);
     let replacements = (0_usize..1_000_usize)
         .step_by(2)
         .map(|index| (index, 1_usize, vec![format!("updated-{index}")]))
+        .collect::<Vec<_>>();
+    let borrowed_replacements = replacements
+        .iter()
+        .map(|replacement| (replacement.0, replacement.1, replacement.2.as_slice()))
         .collect::<Vec<Replacement>>();
-    let result = apply_replacements(&original_contents, &original_lines, &replacements);
+    let result = apply_replacements(
+        &original_contents,
+        &original_lines,
+        &offsets,
+        &borrowed_replacements,
+    );
     let result_lines = result
         .trim_end_matches('\n')
         .split('\n')
@@ -66,10 +76,19 @@ fn replacements_are_applied_in_one_forward_pass() {
 fn adjacent_insertions_keep_patch_order() {
     let original_contents = "a";
     let original_lines = ["a"];
-    let replacements = vec![
-        (1, 0, vec![String::from("b")]),
-        (1, 0, vec![String::from("c")]),
-    ];
-    let result = apply_replacements(original_contents, &original_lines, &replacements);
+    let offsets = line_offsets(&original_lines);
+    let first = [String::from("b")];
+    let second = [String::from("c")];
+    let replacements = vec![(1, 0, first.as_slice()), (1, 0, second.as_slice())];
+    let result = apply_replacements(original_contents, &original_lines, &offsets, &replacements);
     assert_eq!(result, "a\nb\nc\n");
+}
+fn line_offsets(lines: &[&str]) -> Vec<usize> {
+    let mut offsets = Vec::with_capacity(lines.len());
+    let mut offset = 0;
+    for line in lines {
+        offsets.push(offset);
+        offset += line.len() + 1;
+    }
+    offsets
 }
