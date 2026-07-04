@@ -1024,3 +1024,55 @@ target.txt
 ----------
 new
 ```
+
+## 31. 路径变量展开
+
+环境变量：
+
+```text
+PATCH_DIR=docs
+PATCH_FILE=example.txt
+```
+
+输入：
+
+```text
+*** Begin Patch
+*** Add File: $PATCH_DIR/%PATCH_FILE%
++hello
+*** End Patch
+```
+
+输出：
+
+```text
+exit_code: 0
+stdout:
+Success. Updated the following files:
+A docs/example.txt
+
+stderr:
+```
+
+说明：路径支持 Unix 风格 `$VAR`、`${VAR}`，Windows 风格 `%VAR%`，以及位于路径开头的 `~`。
+
+## 32. 路径变量不存在
+
+输入：
+
+```text
+*** Begin Patch
+*** Add File: $MISSING_FILE
++hello
+*** End Patch
+```
+
+输出：
+
+```text
+exit_code: 1
+stdout:
+
+stderr:
+Invalid patch hunk on line 2: environment variable 'MISSING_FILE' is not set in path '$MISSING_FILE'
+```

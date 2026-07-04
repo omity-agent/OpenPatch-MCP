@@ -1,4 +1,7 @@
-use crate::patch::{ApplyResult, apply_patch_text};
+use crate::{
+    patch::{ApplyResult, apply_patch_text},
+    path_expansion::expand_path,
+};
 use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Default)]
 pub struct PatchRunner;
@@ -43,7 +46,10 @@ impl PatchOutput {
     }
 }
 pub fn normalize_cwd(cwd: Option<String>) -> anyhow::Result<PathBuf> {
-    let resolved_cwd = cwd.map_or_else(std::env::current_dir, |path| Ok(PathBuf::from(path)))?;
+    let resolved_cwd = match cwd {
+        Some(path) => expand_path(&path).map_err(anyhow::Error::from)?,
+        None => std::env::current_dir()?,
+    };
     anyhow::ensure!(
         resolved_cwd.is_dir(),
         "cwd is not a directory: {}",

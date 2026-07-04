@@ -1,6 +1,10 @@
-use crate::parser::{
-    ADD_FILE_MARKER, CHANGE_CONTEXT_MARKER, DELETE_FILE_MARKER, EMPTY_CHANGE_CONTEXT_MARKER,
-    EOF_MARKER, FileHunk, MOVE_TO_MARKER, ParseFailure, UPDATE_FILE_MARKER, UpdateChunk, boundary,
+use crate::{
+    parser::{
+        ADD_FILE_MARKER, CHANGE_CONTEXT_MARKER, DELETE_FILE_MARKER, EMPTY_CHANGE_CONTEXT_MARKER,
+        EOF_MARKER, FileHunk, MOVE_TO_MARKER, ParseFailure, UPDATE_FILE_MARKER, UpdateChunk,
+        boundary,
+    },
+    path_expansion::expand_path,
 };
 use std::path::PathBuf;
 pub fn parse_patch(patch: &str) -> Result<Vec<FileHunk>, ParseFailure> {
@@ -19,7 +23,7 @@ pub(crate) fn parse_hunks(lines: &[&str]) -> Result<Vec<FileHunk>, ParseFailure>
             index = next_index;
         } else if let Some(path) = line.strip_prefix(DELETE_FILE_MARKER) {
             hunks.push(FileHunk::Delete {
-                path: PathBuf::from(path),
+                path: parse_path(path, index)?,
             });
             index += 1;
         } else if let Some(path) = line.strip_prefix(UPDATE_FILE_MARKER) {
@@ -60,7 +64,7 @@ fn parse_add(
     }
     Ok((
         FileHunk::Add {
-            path: PathBuf::from(path),
+            path: parse_path(path, marker_index)?,
             contents: finish_lines(&contents),
         },
         index,
@@ -75,7 +79,8 @@ fn parse_update(
     let move_path = lines
         .get(index)
         .and_then(|line| line.strip_prefix(MOVE_TO_MARKER))
-        .map(PathBuf::from);
+        .map(|move_path_text| parse_path(move_path_text, index))
+        .transpose()?;
     if move_path.is_some() {
         index += 1;
     }
@@ -100,7 +105,7 @@ fn parse_update(
     }
     Ok((
         FileHunk::Update {
-            path: PathBuf::from(path),
+            path: parse_path(path, marker_index)?,
             move_path,
             chunks,
         },
@@ -161,6 +166,9 @@ fn is_file_marker(line: &str) -> bool {
 }
 fn is_chunk_marker(line: &str) -> bool {
     line == EMPTY_CHANGE_CONTEXT_MARKER || line.starts_with(CHANGE_CONTEXT_MARKER)
+}
+fn parse_path(path: &str, marker_index: usize) -> Result<PathBuf, ParseFailure> {
+    expand_path(path).map_err(|error| ParseFailure::hunk(marker_index + 1, &error.to_string()))
 }
 fn finish_lines(lines: &[String]) -> String {
     if lines.is_empty() {
