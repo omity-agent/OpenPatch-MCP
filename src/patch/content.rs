@@ -70,8 +70,10 @@ fn seek_context(
     context_line: &String,
     line_index: usize,
 ) -> anyhow::Result<usize> {
-    if let Some(index) = search_index.seek(core::slice::from_ref(context_line), line_index, false) {
-        Ok(index + 1)
+    if let Some(sequence_match) =
+        search_index.seek(core::slice::from_ref(context_line), line_index, false)
+    {
+        Ok(sequence_match.start + sequence_match.length)
     } else {
         anyhow::bail!(
             "Failed to find context '{context_line}' in {}",
@@ -111,10 +113,14 @@ fn make_replacement(
         }
         found = search_index.seek(pattern, line_index, chunk.is_end_of_file);
     }
-    if let Some(start_index) = found {
+    if let Some(sequence_match) = found {
         Ok((
-            (start_index, pattern.len(), new_slice.to_vec()),
-            start_index + pattern.len(),
+            (
+                sequence_match.start,
+                sequence_match.length,
+                new_slice.to_vec(),
+            ),
+            sequence_match.start + sequence_match.length,
         ))
     } else {
         anyhow::bail!(

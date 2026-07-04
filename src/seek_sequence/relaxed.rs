@@ -1,4 +1,4 @@
-use super::MatchMode;
+use super::{MatchMode, SequenceMatch};
 use alloc::borrow::Cow;
 pub(super) fn find_relaxed(
     lines: &[&str],
@@ -6,63 +6,91 @@ pub(super) fn find_relaxed(
     start: usize,
     eof: bool,
     mode: MatchMode,
-) -> Option<usize> {
+) -> Option<SequenceMatch> {
     if pattern.is_empty() {
-        return Some(start);
+        return Some(SequenceMatch { start, length: 0 });
     }
-    if pattern.len() > lines.len() {
+    let pattern_keys = collect_pattern_keys(pattern, mode);
+    if pattern_keys.is_empty() {
         return None;
     }
-    let pattern_keys = pattern
-        .iter()
-        .map(|line| mode.key(line))
-        .collect::<Vec<_>>();
-    let last_start = lines.len() - pattern_keys.len();
+    let line_keys = collect_line_keys(lines, mode);
+    if pattern_keys.len() > line_keys.len() {
+        return None;
+    }
+    let last_start = line_keys.len() - pattern_keys.len();
     if eof {
-        return window_matches(lines, last_start, &pattern_keys, mode).then_some(last_start);
+        return window_matches(&line_keys, last_start, &pattern_keys);
     }
-    if start > last_start {
+    if line_keys
+        .get(last_start)
+        .is_none_or(|line_key| start > line_key.line_index)
+    {
         return None;
     }
-    find_from_anchor(lines, &pattern_keys, start, last_start, mode)
+    find_from_anchor(&line_keys, &pattern_keys, start, last_start)
+}
+fn collect_pattern_keys(pattern: &[String], mode: MatchMode) -> Vec<Cow<'_, str>> {
+    pattern
+        .iter()
+        .filter_map(|line| {
+            let line_key = mode.key(line);
+            (!mode.skips_empty_lines() || !line_key.is_empty()).then_some(line_key)
+        })
+        .collect()
+}
+struct LineKey<'line> {
+    line_index: usize,
+    value: Cow<'line, str>,
+}
+fn collect_line_keys<'line>(lines: &'line [&'line str], mode: MatchMode) -> Vec<LineKey<'line>> {
+    lines
+        .iter()
+        .enumerate()
+        .filter_map(|(line_index, line)| {
+            let line_key = mode.key(line);
+            (!mode.skips_empty_lines() || !line_key.is_empty()).then_some(LineKey {
+                line_index,
+                value: line_key,
+            })
+        })
+        .collect()
 }
 fn find_from_anchor(
-    lines: &[&str],
+    line_keys: &[LineKey<'_>],
     pattern_keys: &[Cow<'_, str>],
     start: usize,
-    last_start: usize,
-    mode: MatchMode,
-) -> Option<usize> {
-    let postings = collect_postings(lines, pattern_keys, mode);
+    last_entry_start: usize,
+) -> Option<SequenceMatch> {
+    let postings = collect_postings(line_keys, pattern_keys);
     let anchor_offset = rarest_pattern_offset(&postings)?;
     let anchor_postings = postings.get(anchor_offset)?;
-    for anchor_index in anchor_postings {
-        if *anchor_index < anchor_offset {
+    for anchor_entry_index in anchor_postings {
+        if *anchor_entry_index < anchor_offset {
             continue;
         }
-        let candidate_start = *anchor_index - anchor_offset;
-        if candidate_start < start || candidate_start > last_start {
+        let candidate_entry_start = *anchor_entry_index - anchor_offset;
+        if candidate_entry_start > last_entry_start
+            || line_keys
+                .get(candidate_entry_start)
+                .is_none_or(|line_key| line_key.line_index < start)
+        {
             continue;
         }
-        if window_matches(lines, candidate_start, pattern_keys, mode) {
-            return Some(candidate_start);
+        if let found @ Some(_) = window_matches(line_keys, candidate_entry_start, pattern_keys) {
+            return found;
         }
     }
     None
 }
-fn collect_postings(
-    lines: &[&str],
-    pattern_keys: &[Cow<'_, str>],
-    mode: MatchMode,
-) -> Vec<Vec<usize>> {
+fn collect_postings(line_keys: &[LineKey<'_>], pattern_keys: &[Cow<'_, str>]) -> Vec<Vec<usize>> {
     let mut postings = vec![Vec::new(); pattern_keys.len()];
-    for (index, line) in lines.iter().enumerate() {
-        let line_key = mode.key(line);
+    for (entry_index, line_key) in line_keys.iter().enumerate() {
         for (offset, pattern_key) in pattern_keys.iter().enumerate() {
-            if line_key.as_ref() == pattern_key.as_ref()
+            if line_key.value.as_ref() == pattern_key.as_ref()
                 && let Some(posting) = postings.get_mut(offset)
             {
-                posting.push(index);
+                posting.push(entry_index);
             }
         }
     }
@@ -81,19 +109,24 @@ fn rarest_pattern_offset(postings: &[Vec<usize>]) -> Option<usize> {
     rarest.map(|(offset, _)| offset)
 }
 fn window_matches(
-    lines: &[&str],
-    start: usize,
+    line_keys: &[LineKey<'_>],
+    entry_start: usize,
     pattern_keys: &[Cow<'_, str>],
-    mode: MatchMode,
-) -> bool {
-    let Some(end) = start.checked_add(pattern_keys.len()) else {
-        return false;
-    };
-    let Some(window) = lines.get(start..end) else {
-        return false;
-    };
-    window
+) -> Option<SequenceMatch> {
+    let entry_end = entry_start.checked_add(pattern_keys.len())?;
+    let window = line_keys.get(entry_start..entry_end)?;
+    if !window
         .iter()
         .zip(pattern_keys)
-        .all(|(line, pattern_key)| mode.key(line).as_ref() == pattern_key.as_ref())
+        .all(|(line_key, pattern_key)| line_key.value.as_ref() == pattern_key.as_ref())
+    {
+        return None;
+    }
+    let first_line = window.first()?;
+    let last_line = window.last()?;
+    let length = last_line.line_index.checked_sub(first_line.line_index)? + 1;
+    Some(SequenceMatch {
+        start: first_line.line_index,
+        length,
+    })
 }

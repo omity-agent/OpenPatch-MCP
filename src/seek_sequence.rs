@@ -8,23 +8,40 @@ pub(crate) struct LineSearchIndex<'slice, 'text> {
     lines: &'slice [&'text str],
     exact: Option<SearchTier<'text>>,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SequenceMatch {
+    pub(crate) start: usize,
+    pub(crate) length: usize,
+}
 impl<'slice, 'text> LineSearchIndex<'slice, 'text> {
     #[must_use]
     pub(crate) const fn new(lines: &'slice [&'text str]) -> Self {
         Self { lines, exact: None }
     }
     #[must_use]
-    pub(crate) fn seek(&mut self, pattern: &[String], start: usize, eof: bool) -> Option<usize> {
+    pub(crate) fn seek(
+        &mut self,
+        pattern: &[String],
+        start: usize,
+        eof: bool,
+    ) -> Option<SequenceMatch> {
         if let found @ Some(_) = self.find(pattern, start, eof, MatchMode::Exact) {
-            return found;
-        }
-        if let found @ Some(_) = find_relaxed(self.lines, pattern, start, eof, MatchMode::TrimEnd) {
             return found;
         }
         if let found @ Some(_) = find_relaxed(self.lines, pattern, start, eof, MatchMode::Trim) {
             return found;
         }
-        find_relaxed(self.lines, pattern, start, eof, MatchMode::Normalized)
+        if let found @ Some(_) =
+            find_relaxed(self.lines, pattern, start, eof, MatchMode::Normalized)
+        {
+            return found;
+        }
+        if let found @ Some(_) =
+            find_relaxed(self.lines, pattern, start, eof, MatchMode::IgnoreEmptyLines)
+        {
+            return found;
+        }
+        find_relaxed(self.lines, pattern, start, eof, MatchMode::CollapseSpaces)
     }
     fn find(
         &mut self,
@@ -32,13 +49,16 @@ impl<'slice, 'text> LineSearchIndex<'slice, 'text> {
         start: usize,
         eof: bool,
         mode: MatchMode,
-    ) -> Option<usize> {
+    ) -> Option<SequenceMatch> {
         let lines = self.lines;
         let tier = match mode {
             MatchMode::Exact => self
                 .exact
                 .get_or_insert_with(|| SearchTier::new(lines, MatchMode::Exact)),
-            MatchMode::TrimEnd | MatchMode::Trim | MatchMode::Normalized => {
+            MatchMode::Trim
+            | MatchMode::Normalized
+            | MatchMode::IgnoreEmptyLines
+            | MatchMode::CollapseSpaces => {
                 panic!("only exact mode uses a persistent full index")
             }
         };
@@ -48,18 +68,22 @@ impl<'slice, 'text> LineSearchIndex<'slice, 'text> {
 #[derive(Clone, Copy)]
 pub(super) enum MatchMode {
     Exact,
-    TrimEnd,
     Trim,
     Normalized,
+    IgnoreEmptyLines,
+    CollapseSpaces,
 }
 impl MatchMode {
     pub(super) fn key(self, source: &str) -> Cow<'_, str> {
         match self {
             Self::Exact => Cow::Borrowed(source),
-            Self::TrimEnd => Cow::Borrowed(source.trim_end()),
             Self::Trim => Cow::Borrowed(source.trim()),
-            Self::Normalized => normalize(source),
+            Self::Normalized | Self::IgnoreEmptyLines => normalize(source),
+            Self::CollapseSpaces => normalize::collapse_spaces(source),
         }
+    }
+    pub(super) const fn skips_empty_lines(self) -> bool {
+        matches!(self, Self::IgnoreEmptyLines | Self::CollapseSpaces)
     }
 }
 struct SearchTier<'text> {
@@ -98,9 +122,9 @@ impl<'text> SearchTier<'text> {
         };
         posting.push(index);
     }
-    fn find(&self, pattern: &[String], start: usize, eof: bool) -> Option<usize> {
+    fn find(&self, pattern: &[String], start: usize, eof: bool) -> Option<SequenceMatch> {
         if pattern.is_empty() {
-            return Some(start);
+            return Some(SequenceMatch { start, length: 0 });
         }
         if pattern.len() > self.line_keys.len() {
             return None;
@@ -110,7 +134,10 @@ impl<'text> SearchTier<'text> {
         if eof {
             return self
                 .window_matches(last_start, &pattern_keys)
-                .then_some(last_start);
+                .then_some(SequenceMatch {
+                    start: last_start,
+                    length: pattern_keys.len(),
+                });
         }
         if start > last_start {
             return None;
@@ -131,7 +158,7 @@ impl<'text> SearchTier<'text> {
         pattern_keys: &[usize],
         start: usize,
         last_start: usize,
-    ) -> Option<usize> {
+    ) -> Option<SequenceMatch> {
         let anchor_offset = self.rarest_pattern_offset(pattern_keys)?;
         let anchor_key = *pattern_keys.get(anchor_offset)?;
         let anchor_postings = self.postings.get(anchor_key)?;
@@ -144,7 +171,10 @@ impl<'text> SearchTier<'text> {
                 continue;
             }
             if self.window_matches(candidate_start, pattern_keys) {
-                return Some(candidate_start);
+                return Some(SequenceMatch {
+                    start: candidate_start,
+                    length: pattern_keys.len(),
+                });
             }
         }
         None

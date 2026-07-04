@@ -18,6 +18,31 @@ pub(super) fn normalize(source: &str) -> Cow<'_, str> {
     }
     normalized.map_or(Cow::Borrowed(trimmed), Cow::Owned)
 }
+pub(super) fn collapse_spaces(source: &str) -> Cow<'_, str> {
+    let normalized = normalize(source);
+    let mut collapsed: Option<String> = None;
+    let mut previous_was_space = false;
+    for (index, character) in normalized.char_indices() {
+        let keep_character = character != ' ' || !previous_was_space;
+        if let Some(output) = collapsed.as_mut() {
+            if keep_character {
+                output.push(character);
+            }
+        } else if keep_character {
+            previous_was_space = character == ' ';
+            continue;
+        } else {
+            let mut output = String::with_capacity(normalized.len());
+            let Some(prefix) = normalized.get(..index) else {
+                panic!("char index must be a string boundary");
+            };
+            output.push_str(prefix);
+            collapsed = Some(output);
+        }
+        previous_was_space = character == ' ';
+    }
+    collapsed.map_or(normalized, Cow::Owned)
+}
 const fn normalize_character(character: char) -> char {
     match character {
         '\u{2010}' | '\u{2011}' | '\u{2012}' | '\u{2013}' | '\u{2014}' | '\u{2015}'

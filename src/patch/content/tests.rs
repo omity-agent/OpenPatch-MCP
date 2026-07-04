@@ -15,6 +15,32 @@ fn insertion_without_old_lines_precedes_logical_trailing_empty_line() {
     assert!(result.errors.is_empty());
 }
 #[test]
+fn replacement_can_ignore_empty_lines_in_original() {
+    let chunk = UpdateChunk {
+        change_context: None,
+        old_lines: vec![String::from("a"), String::from("b")],
+        new_lines: vec![String::from("updated")],
+        is_end_of_file: false,
+    };
+    let result = derive_new_contents(Path::new("target.txt"), "a\n\nb\nc\n", &[chunk]);
+    assert_eq!(result.contents, "updated\nc\n");
+    assert_eq!(result.applied_chunks, 1);
+    assert!(result.errors.is_empty());
+}
+#[test]
+fn replacement_can_ignore_consecutive_space_counts() {
+    let chunk = UpdateChunk {
+        change_context: None,
+        old_lines: vec![String::from("a b"), String::from("c d")],
+        new_lines: vec![String::from("updated")],
+        is_end_of_file: false,
+    };
+    let result = derive_new_contents(Path::new("target.txt"), "a  b\n\nc   d\n", &[chunk]);
+    assert_eq!(result.contents, "updated\n");
+    assert_eq!(result.applied_chunks, 1);
+    assert!(result.errors.is_empty());
+}
+#[test]
 fn replacements_are_applied_in_one_forward_pass() {
     let owned_lines = (0_usize..1_000_usize)
         .map(|index| format!("line-{index}"))

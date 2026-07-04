@@ -1,8 +1,13 @@
-use super::LineSearchIndex;
+use super::{LineSearchIndex, SequenceMatch};
 fn pattern(values: &[&str]) -> Vec<String> {
     values.iter().map(|value| (*value).to_owned()).collect()
 }
 fn seek_sequence(lines: &[&str], pattern: &[String], start: usize, eof: bool) -> Option<usize> {
+    LineSearchIndex::new(lines)
+        .seek(pattern, start, eof)
+        .map(|sequence_match| sequence_match.start)
+}
+fn seek_span(lines: &[&str], pattern: &[String], start: usize, eof: bool) -> Option<SequenceMatch> {
     LineSearchIndex::new(lines).seek(pattern, start, eof)
 }
 #[test]
@@ -12,16 +17,46 @@ fn exact_match_keeps_priority_over_earlier_trim_match() {
     assert_eq!(seek_sequence(&source, &pattern, 0, false), Some(2));
 }
 #[test]
-fn trim_end_match_keeps_priority_over_earlier_trim_match() {
-    let source = ["  target", "target   "];
+fn trim_match_replaces_removed_trim_end_tier() {
+    let source = ["target   ", "  target"];
     let pattern = pattern(&["target"]);
-    assert_eq!(seek_sequence(&source, &pattern, 0, false), Some(1));
+    assert_eq!(seek_sequence(&source, &pattern, 0, false), Some(0));
 }
 #[test]
 fn trim_match_keeps_priority_over_earlier_normalized_match() {
     let source = ["a—b", "  a-b  "];
     let pattern = pattern(&["a-b"]);
     assert_eq!(seek_sequence(&source, &pattern, 0, false), Some(1));
+}
+#[test]
+fn normalized_match_keeps_priority_over_earlier_empty_line_match() {
+    let source = ["a—b", "c", "a-b", "", "c"];
+    let pattern = pattern(&["a-b", "c"]);
+    assert_eq!(seek_sequence(&source, &pattern, 0, false), Some(0));
+}
+#[test]
+fn empty_lines_can_be_ignored() {
+    let source = ["a", "", "b"];
+    let pattern = pattern(&["a", "b"]);
+    assert_eq!(
+        seek_span(&source, &pattern, 0, false),
+        Some(SequenceMatch {
+            start: 0,
+            length: 3
+        })
+    );
+}
+#[test]
+fn space_runs_can_be_collapsed_after_empty_lines() {
+    let source = ["a  b", "", "c   d"];
+    let pattern = pattern(&["a b", "c d"]);
+    assert_eq!(
+        seek_span(&source, &pattern, 0, false),
+        Some(SequenceMatch {
+            start: 0,
+            length: 3
+        })
+    );
 }
 #[test]
 fn eof_search_only_checks_the_last_possible_window() {
@@ -40,5 +75,11 @@ fn rare_middle_line_can_anchor_the_match() {
     let source = ["same", "same", "same", "unique", "same", "same"];
     let pattern = pattern(&["same", "unique", "same"]);
     let mut index = LineSearchIndex::new(&source);
-    assert_eq!(index.seek(&pattern, 0, false), Some(2));
+    assert_eq!(
+        index.seek(&pattern, 0, false),
+        Some(SequenceMatch {
+            start: 2,
+            length: 3
+        })
+    );
 }
