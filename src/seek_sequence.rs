@@ -1,54 +1,75 @@
+use alloc::borrow::Cow;
 use std::collections::{HashMap, hash_map::Entry};
-pub(crate) struct LineSearchIndex {
-    exact: SearchTier,
-    trim_end: SearchTier,
-    trim: SearchTier,
-    normalized: SearchTier,
+mod normalize;
+mod relaxed;
+use normalize::normalize;
+use relaxed::find_relaxed;
+pub(crate) struct LineSearchIndex<'slice, 'text> {
+    lines: &'slice [&'text str],
+    exact: Option<SearchTier<'text>>,
 }
-impl LineSearchIndex {
+impl<'slice, 'text> LineSearchIndex<'slice, 'text> {
     #[must_use]
-    pub(crate) fn new(lines: &[String]) -> Self {
-        Self {
-            exact: SearchTier::new(lines, MatchMode::Exact),
-            trim_end: SearchTier::new(lines, MatchMode::TrimEnd),
-            trim: SearchTier::new(lines, MatchMode::Trim),
-            normalized: SearchTier::new(lines, MatchMode::Normalized),
-        }
+    pub(crate) const fn new(lines: &'slice [&'text str]) -> Self {
+        Self { lines, exact: None }
     }
     #[must_use]
-    pub(crate) fn seek(&self, pattern: &[String], start: usize, eof: bool) -> Option<usize> {
-        self.exact
-            .find(pattern, start, eof)
-            .or_else(|| self.trim_end.find(pattern, start, eof))
-            .or_else(|| self.trim.find(pattern, start, eof))
-            .or_else(|| self.normalized.find(pattern, start, eof))
+    pub(crate) fn seek(&mut self, pattern: &[String], start: usize, eof: bool) -> Option<usize> {
+        if let found @ Some(_) = self.find(pattern, start, eof, MatchMode::Exact) {
+            return found;
+        }
+        if let found @ Some(_) = find_relaxed(self.lines, pattern, start, eof, MatchMode::TrimEnd) {
+            return found;
+        }
+        if let found @ Some(_) = find_relaxed(self.lines, pattern, start, eof, MatchMode::Trim) {
+            return found;
+        }
+        find_relaxed(self.lines, pattern, start, eof, MatchMode::Normalized)
+    }
+    fn find(
+        &mut self,
+        pattern: &[String],
+        start: usize,
+        eof: bool,
+        mode: MatchMode,
+    ) -> Option<usize> {
+        let lines = self.lines;
+        let tier = match mode {
+            MatchMode::Exact => self
+                .exact
+                .get_or_insert_with(|| SearchTier::new(lines, MatchMode::Exact)),
+            MatchMode::TrimEnd | MatchMode::Trim | MatchMode::Normalized => {
+                panic!("only exact mode uses a persistent full index")
+            }
+        };
+        tier.find(pattern, start, eof)
     }
 }
 #[derive(Clone, Copy)]
-enum MatchMode {
+pub(super) enum MatchMode {
     Exact,
     TrimEnd,
     Trim,
     Normalized,
 }
 impl MatchMode {
-    fn key(self, source: &str) -> String {
+    pub(super) fn key(self, source: &str) -> Cow<'_, str> {
         match self {
-            Self::Exact => source.to_owned(),
-            Self::TrimEnd => source.trim_end().to_owned(),
-            Self::Trim => source.trim().to_owned(),
+            Self::Exact => Cow::Borrowed(source),
+            Self::TrimEnd => Cow::Borrowed(source.trim_end()),
+            Self::Trim => Cow::Borrowed(source.trim()),
             Self::Normalized => normalize(source),
         }
     }
 }
-struct SearchTier {
+struct SearchTier<'text> {
     mode: MatchMode,
     line_keys: Vec<usize>,
-    key_ids: HashMap<String, usize>,
+    key_ids: HashMap<Cow<'text, str>, usize>,
     postings: Vec<Vec<usize>>,
 }
-impl SearchTier {
-    fn new(lines: &[String], mode: MatchMode) -> Self {
+impl<'text> SearchTier<'text> {
+    fn new(lines: &[&'text str], mode: MatchMode) -> Self {
         let mut tier = Self {
             mode,
             line_keys: Vec::with_capacity(lines.len()),
@@ -60,7 +81,7 @@ impl SearchTier {
         }
         tier
     }
-    fn push_line(&mut self, index: usize, line: &str) {
+    fn push_line(&mut self, index: usize, line: &'text str) {
         let key = self.mode.key(line);
         let key_id = match self.key_ids.entry(key) {
             Entry::Occupied(entry) => *entry.get(),
@@ -101,7 +122,7 @@ impl SearchTier {
             .iter()
             .map(|line| {
                 let key = self.mode.key(line);
-                self.key_ids.get(&key).copied()
+                self.key_ids.get(key.as_ref()).copied()
             })
             .collect()
     }
@@ -146,22 +167,6 @@ impl SearchTier {
             .get(start..end)
             .is_some_and(|window| window == pattern_keys)
     }
-}
-fn normalize(source: &str) -> String {
-    source
-        .trim()
-        .chars()
-        .map(|character| match character {
-            '\u{2010}' | '\u{2011}' | '\u{2012}' | '\u{2013}' | '\u{2014}' | '\u{2015}'
-            | '\u{2212}' => '-',
-            '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}' => '\'',
-            '\u{201C}' | '\u{201D}' | '\u{201E}' | '\u{201F}' => '"',
-            '\u{00A0}' | '\u{2002}' | '\u{2003}' | '\u{2004}' | '\u{2005}' | '\u{2006}'
-            | '\u{2007}' | '\u{2008}' | '\u{2009}' | '\u{200A}' | '\u{202F}' | '\u{205F}'
-            | '\u{3000}' => ' ',
-            other => other,
-        })
-        .collect()
 }
 #[cfg(test)]
 mod tests;

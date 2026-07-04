@@ -1,4 +1,4 @@
-use super::{Replacement, apply_replacements, derive_new_contents};
+use super::{derive_new_contents, replacements::Replacement, replacements::apply_replacements};
 use crate::parser::UpdateChunk;
 use std::path::Path;
 #[test]
@@ -16,27 +16,34 @@ fn insertion_without_old_lines_precedes_logical_trailing_empty_line() {
 }
 #[test]
 fn replacements_are_applied_in_one_forward_pass() {
-    let original_lines = (0_usize..1_000_usize)
+    let owned_lines = (0_usize..1_000_usize)
         .map(|index| format!("line-{index}"))
         .collect::<Vec<_>>();
+    let original_lines = owned_lines.iter().map(String::as_str).collect::<Vec<_>>();
+    let original_contents = owned_lines.join("\n");
     let replacements = (0_usize..1_000_usize)
         .step_by(2)
         .map(|index| (index, 1_usize, vec![format!("updated-{index}")]))
         .collect::<Vec<Replacement>>();
-    let result = apply_replacements(original_lines, &replacements);
-    assert_eq!(result.len(), 1_000);
-    assert_eq!(result.first().map(String::as_str), Some("updated-0"));
-    assert_eq!(result.get(1).map(String::as_str), Some("line-1"));
-    assert_eq!(result.get(998).map(String::as_str), Some("updated-998"));
-    assert_eq!(result.get(999).map(String::as_str), Some("line-999"));
+    let result = apply_replacements(&original_contents, &original_lines, &replacements);
+    let result_lines = result
+        .trim_end_matches('\n')
+        .split('\n')
+        .collect::<Vec<_>>();
+    assert_eq!(result_lines.len(), 1_000);
+    assert_eq!(result_lines.first().copied(), Some("updated-0"));
+    assert_eq!(result_lines.get(1).copied(), Some("line-1"));
+    assert_eq!(result_lines.get(998).copied(), Some("updated-998"));
+    assert_eq!(result_lines.get(999).copied(), Some("line-999"));
 }
 #[test]
 fn adjacent_insertions_keep_patch_order() {
-    let original_lines = vec![String::from("a")];
+    let original_contents = "a";
+    let original_lines = ["a"];
     let replacements = vec![
         (1, 0, vec![String::from("b")]),
         (1, 0, vec![String::from("c")]),
     ];
-    let result = apply_replacements(original_lines, &replacements);
-    assert_eq!(result, ["a", "b", "c"]);
+    let result = apply_replacements(original_contents, &original_lines, &replacements);
+    assert_eq!(result, "a\nb\nc\n");
 }

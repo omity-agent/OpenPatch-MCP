@@ -1,6 +1,7 @@
 use crate::{parser::UpdateChunk, seek_sequence};
+use replacements::{Replacement, apply_replacements};
 use std::path::Path;
-type Replacement = (usize, usize, Vec<String>);
+mod replacements;
 pub(crate) struct DerivedContents {
     pub(crate) contents: String,
     pub(crate) applied_chunks: usize,
@@ -11,18 +12,13 @@ pub(crate) fn derive_new_contents(
     original_contents: &str,
     chunks: &[UpdateChunk],
 ) -> DerivedContents {
-    let mut original_lines: Vec<String> =
-        original_contents.split('\n').map(str::to_owned).collect();
-    if original_lines.last().is_some_and(String::is_empty) {
+    let mut original_lines: Vec<&str> = original_contents.split('\n').collect();
+    if original_lines.last().is_some_and(|line| line.is_empty()) {
         original_lines.pop();
     }
     let plan = compute_replacements(&original_lines, path, chunks);
-    let mut new_lines = apply_replacements(original_lines, &plan.replacements);
-    if !new_lines.last().is_some_and(String::is_empty) {
-        new_lines.push(String::new());
-    }
     DerivedContents {
-        contents: new_lines.join("\n"),
+        contents: apply_replacements(original_contents, &original_lines, &plan.replacements),
         applied_chunks: plan.applied_chunks,
         errors: plan.errors,
     }
@@ -33,18 +29,18 @@ struct ReplacementPlan {
     errors: Vec<String>,
 }
 fn compute_replacements(
-    original_lines: &[String],
+    original_lines: &[&str],
     path: &Path,
     chunks: &[UpdateChunk],
 ) -> ReplacementPlan {
-    let search_index = seek_sequence::LineSearchIndex::new(original_lines);
+    let mut search_index = seek_sequence::LineSearchIndex::new(original_lines);
     let mut replacements = Vec::new();
     let mut errors = Vec::new();
     let mut applied_chunks = 0;
     let mut line_index = 0;
     for chunk in chunks {
         if let Some(context_line) = chunk.change_context.as_ref() {
-            match seek_context(&search_index, path, context_line, line_index) {
+            match seek_context(&mut search_index, path, context_line, line_index) {
                 Ok(index) => line_index = index,
                 Err(error) => {
                     errors.push(error.to_string());
@@ -52,7 +48,7 @@ fn compute_replacements(
                 }
             }
         }
-        match make_replacement(original_lines, &search_index, path, chunk, line_index) {
+        match make_replacement(original_lines, &mut search_index, path, chunk, line_index) {
             Ok((replacement, next_line_index)) => {
                 replacements.push(replacement);
                 line_index = next_line_index;
@@ -69,7 +65,7 @@ fn compute_replacements(
     }
 }
 fn seek_context(
-    search_index: &seek_sequence::LineSearchIndex,
+    search_index: &mut seek_sequence::LineSearchIndex<'_, '_>,
     path: &Path,
     context_line: &String,
     line_index: usize,
@@ -84,14 +80,14 @@ fn seek_context(
     }
 }
 fn make_replacement(
-    original_lines: &[String],
-    search_index: &seek_sequence::LineSearchIndex,
+    original_lines: &[&str],
+    search_index: &mut seek_sequence::LineSearchIndex<'_, '_>,
     path: &Path,
     chunk: &UpdateChunk,
     line_index: usize,
 ) -> anyhow::Result<(Replacement, usize)> {
     if chunk.old_lines.is_empty() {
-        let insertion_index = if original_lines.last().is_some_and(String::is_empty) {
+        let insertion_index = if original_lines.last().is_some_and(|line| line.is_empty()) {
             original_lines.len() - 1
         } else {
             original_lines.len()
@@ -127,35 +123,6 @@ fn make_replacement(
             chunk.old_lines.join("\n")
         );
     }
-}
-fn apply_replacements(lines: Vec<String>, replacements: &[Replacement]) -> Vec<String> {
-    let mut result = Vec::with_capacity(lines.len());
-    let mut source_lines = lines.into_iter();
-    let mut source_index = 0;
-    for replacement in replacements {
-        let start_index = replacement.0;
-        let old_length = replacement.1;
-        assert!(
-            source_index <= start_index,
-            "replacement ranges must be ordered and in bounds"
-        );
-        while source_index < start_index {
-            let Some(line) = source_lines.next() else {
-                panic!("replacement ranges must be ordered and in bounds");
-            };
-            result.push(line);
-            source_index += 1;
-        }
-        result.extend(replacement.2.iter().cloned());
-        for _ in 0..old_length {
-            if source_lines.next().is_none() {
-                break;
-            }
-            source_index += 1;
-        }
-    }
-    result.extend(source_lines);
-    result
 }
 #[cfg(test)]
 mod tests;

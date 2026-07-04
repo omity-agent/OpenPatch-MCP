@@ -1,3 +1,4 @@
+extern crate alloc;
 pub mod cli;
 mod command;
 mod parser;
