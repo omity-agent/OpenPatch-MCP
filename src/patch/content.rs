@@ -133,37 +133,34 @@ fn make_replacement(
         );
     }
 }
-fn apply_replacements(mut lines: Vec<String>, replacements: &[Replacement]) -> Vec<String> {
-    for replacement in replacements.iter().rev() {
+fn apply_replacements(lines: Vec<String>, replacements: &[Replacement]) -> Vec<String> {
+    let mut result = Vec::with_capacity(lines.len());
+    let mut source_lines = lines.into_iter();
+    let mut source_index = 0;
+    for replacement in replacements {
         let start_index = replacement.0;
         let old_length = replacement.1;
-        for _ in 0..old_length {
-            if start_index < lines.len() {
-                lines.remove(start_index);
-            }
+        assert!(
+            source_index <= start_index,
+            "replacement ranges must be ordered and in bounds"
+        );
+        while source_index < start_index {
+            let Some(line) = source_lines.next() else {
+                panic!("replacement ranges must be ordered and in bounds");
+            };
+            result.push(line);
+            source_index += 1;
         }
-        for (offset, new_line) in replacement.2.iter().enumerate() {
-            lines.insert(start_index + offset, new_line.clone());
+        result.extend(replacement.2.iter().cloned());
+        for _ in 0..old_length {
+            if source_lines.next().is_none() {
+                break;
+            }
+            source_index += 1;
         }
     }
-    lines
+    result.extend(source_lines);
+    result
 }
 #[cfg(test)]
-mod tests {
-    use super::derive_new_contents;
-    use crate::parser::UpdateChunk;
-    use std::path::Path;
-    #[test]
-    fn insertion_without_old_lines_precedes_logical_trailing_empty_line() {
-        let chunk = UpdateChunk {
-            change_context: None,
-            old_lines: Vec::new(),
-            new_lines: vec![String::from("b")],
-            is_end_of_file: false,
-        };
-        let result = derive_new_contents(Path::new("target.txt"), "a\n\n", &[chunk]);
-        assert_eq!(result.contents, "a\nb\n");
-        assert_eq!(result.applied_chunks, 1);
-        assert!(result.errors.is_empty());
-    }
-}
+mod tests;
