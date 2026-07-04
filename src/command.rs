@@ -98,6 +98,45 @@ mod tests {
         assert_eq!(fs::read_to_string(&target_path).unwrap(), "new\n");
         fs::remove_dir_all(directory).unwrap();
     }
+    #[test]
+    fn delete_missing_file_reports_delete_context() {
+        let directory = unique_temp_directory().unwrap();
+        let patch = [
+            "*** Begin Patch",
+            "*** Delete File: missing.txt",
+            "*** End Patch",
+            "",
+        ]
+        .join("\n");
+        let output = PatchRunner::apply(PatchExecution {
+            patch: &patch,
+            cwd: &directory,
+        });
+        assert!(!output.succeeded());
+        assert!(output.stderr.contains("Failed to delete file"));
+        assert!(!output.stderr.contains("Failed to inspect file"));
+        fs::remove_dir_all(directory).unwrap();
+    }
+    #[test]
+    fn delete_directory_reports_reference_style_context() {
+        let directory = unique_temp_directory().unwrap();
+        fs::create_dir_all(directory.join("target")).unwrap();
+        let patch = [
+            "*** Begin Patch",
+            "*** Delete File: target",
+            "*** End Patch",
+            "",
+        ]
+        .join("\n");
+        let output = PatchRunner::apply(PatchExecution {
+            patch: &patch,
+            cwd: &directory,
+        });
+        assert!(!output.succeeded());
+        assert!(output.stderr.contains("Failed to delete file"));
+        assert!(output.stderr.contains("path is a directory"));
+        fs::remove_dir_all(directory).unwrap();
+    }
     fn unique_temp_directory() -> anyhow::Result<PathBuf> {
         let suffix = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
         let directory =

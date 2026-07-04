@@ -68,7 +68,12 @@ fn add_replacement(
     line_index: &mut usize,
 ) -> anyhow::Result<()> {
     if chunk.old_lines.is_empty() {
-        replacements.push((original_lines.len(), 0, chunk.new_lines.clone()));
+        let insertion_index = if original_lines.last().is_some_and(String::is_empty) {
+            original_lines.len() - 1
+        } else {
+            original_lines.len()
+        };
+        replacements.push((insertion_index, 0, chunk.new_lines.clone()));
         return Ok(());
     }
     let mut pattern = chunk.old_lines.as_slice();
@@ -117,4 +122,21 @@ fn apply_replacements(mut lines: Vec<String>, replacements: &[Replacement]) -> V
         }
     }
     lines
+}
+#[cfg(test)]
+mod tests {
+    use super::derive_new_contents;
+    use crate::parser::UpdateChunk;
+    use std::path::Path;
+    #[test]
+    fn insertion_without_old_lines_precedes_logical_trailing_empty_line() {
+        let chunk = UpdateChunk {
+            change_context: None,
+            old_lines: Vec::new(),
+            new_lines: vec![String::from("b")],
+            is_end_of_file: false,
+        };
+        let result = derive_new_contents(Path::new("target.txt"), "a\n\n", &[chunk]).unwrap();
+        assert_eq!(result, "a\nb\n");
+    }
 }

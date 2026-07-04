@@ -41,13 +41,15 @@ impl<'cwd> FileWriter<'cwd> {
     }
     pub(crate) fn delete_file(&self, path: &Path) -> anyhow::Result<()> {
         let target = self.resolve(path)?;
-        ensure_not_directory(&target)?;
+        ensure_not_directory(&target)
+            .map_err(|error| io_context(&error, "Failed to delete file", &target))?;
         fs::remove_file(&target)
             .map_err(|error| io_context(&error, "Failed to delete file", &target))
     }
     pub(crate) fn delete_original(&self, path: &Path) -> anyhow::Result<()> {
         let source = self.resolve(path)?;
-        ensure_not_directory(&source)?;
+        ensure_not_directory(&source)
+            .map_err(|error| io_context(&error, "Failed to remove original", &source))?;
         fs::remove_file(&source)
             .map_err(|error| io_context(&error, "Failed to remove original", &source))
     }
@@ -60,12 +62,12 @@ impl<'cwd> FileWriter<'cwd> {
         Ok(self.cwd.join(path))
     }
 }
-fn ensure_not_directory(path: &Path) -> anyhow::Result<()> {
-    if fs::metadata(path)
-        .map_err(|error| io_context(&error, "Failed to inspect file", path))?
-        .is_dir()
-    {
-        anyhow::bail!("{} is a directory", path.display());
+fn ensure_not_directory(path: &Path) -> io::Result<()> {
+    if fs::metadata(path)?.is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "path is a directory",
+        ));
     }
     Ok(())
 }
