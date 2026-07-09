@@ -1,17 +1,10 @@
 use crate::parser::{BEGIN_PATCH_MARKER, END_PATCH_MARKER, FileHunk, ParseFailure};
 pub(crate) fn parse_patch_lines(patch: &str) -> Result<Vec<FileHunk>, ParseFailure> {
     let trimmed_patch = patch.trim();
-    let mut lines = Vec::with_capacity(line_capacity(trimmed_patch));
+    let mut lines = Vec::with_capacity(crate::text::line_count(trimmed_patch));
     lines.extend(trimmed_patch.lines());
     let patch_lines = check_lenient(&lines)?;
     crate::parser::parse::parse_hunks(patch_lines)
-}
-fn line_capacity(text: &str) -> usize {
-    if text.is_empty() {
-        0
-    } else {
-        bytecount::count(text.as_bytes(), b'\n') + usize::from(!text.ends_with('\n'))
-    }
 }
 fn check_lenient<'line>(
     original_lines: &'line [&'line str],

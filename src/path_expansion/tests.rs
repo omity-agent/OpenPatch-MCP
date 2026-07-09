@@ -26,6 +26,16 @@ fn expands_home_prefix() {
     assert_eq!(expanded, "/home/user/target.txt");
 }
 #[test]
+fn expands_backslash_home_prefix() {
+    let expanded = expand_with(
+        "~\\target.txt",
+        |_| VariableValue::Missing,
+        || Some(PathBuf::from("C:\\Users\\agent")),
+    )
+    .unwrap();
+    assert_eq!(expanded, "C:\\Users\\agent\\target.txt");
+}
+#[test]
 fn reports_missing_variable() {
     let error =
         expand_with("$MISSING/target.txt", |_| VariableValue::Missing, || None).unwrap_err();

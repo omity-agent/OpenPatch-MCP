@@ -81,24 +81,9 @@ impl FileStats {
         }
     }
     pub(crate) fn from_contents(contents: &str) -> Self {
-        if contents.is_empty() {
-            return Self::empty();
-        }
-        if contents.is_ascii() {
-            return Self::from_ascii_contents(contents);
-        }
-        let newline_count = bytecount::count(contents.as_bytes(), b'\n');
-        let character_count = bytecount::num_chars(contents.as_bytes());
         Self {
-            line_count: newline_count + usize::from(!contents.ends_with('\n')),
-            character_count,
-        }
-    }
-    fn from_ascii_contents(contents: &str) -> Self {
-        let newline_count = bytecount::count(contents.as_bytes(), b'\n');
-        Self {
-            line_count: newline_count + usize::from(!contents.ends_with('\n')),
-            character_count: contents.len(),
+            line_count: crate::text::line_count(contents),
+            character_count: crate::text::character_count(contents),
         }
     }
 }

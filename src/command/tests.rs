@@ -1,9 +1,5 @@
 use super::{PatchExecution, PatchOutput, PatchRunner};
-use std::{
-    fs,
-    path::PathBuf,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::fs;
 #[test]
 fn success_requires_zero_status() {
     assert!(
@@ -17,8 +13,8 @@ fn success_requires_zero_status() {
 }
 #[test]
 fn multiline_patch_is_applied_without_executable() {
-    let directory = unique_temp_directory().unwrap();
-    let target_path = directory.join("target.txt");
+    let directory = tempfile::tempdir().unwrap();
+    let target_path = directory.path().join("target.txt");
     fs::write(&target_path, "old\n").unwrap();
     let patch = [
         "*** Begin Patch",
@@ -33,14 +29,13 @@ fn multiline_patch_is_applied_without_executable() {
     let output = PatchRunner::apply(PatchExecution { patch: &patch });
     assert!(output.succeeded(), "{}", output.render());
     assert_eq!(fs::read_to_string(&target_path).unwrap(), "new\n");
-    fs::remove_dir_all(directory).unwrap();
 }
 #[test]
 fn failed_update_does_not_stop_following_files() {
-    let directory = unique_temp_directory().unwrap();
-    let first_path = directory.join("a.txt");
-    let second_path = directory.join("b.txt");
-    let third_path = directory.join("c.txt");
+    let directory = tempfile::tempdir().unwrap();
+    let first_path = directory.path().join("a.txt");
+    let second_path = directory.path().join("b.txt");
+    let third_path = directory.path().join("c.txt");
     fs::write(&first_path, "old\n").unwrap();
     fs::write(&second_path, "kept\n").unwrap();
     fs::write(&third_path, "old\n").unwrap();
@@ -78,16 +73,15 @@ fn failed_update_does_not_stop_following_files() {
             .contains(&format!("M {}", third_path.display()))
     );
     assert!(output.stderr.contains("Failed to find expected lines"));
-    fs::remove_dir_all(directory).unwrap();
 }
 #[test]
 fn delete_missing_file_reports_delete_context() {
-    let directory = unique_temp_directory().unwrap();
+    let directory = tempfile::tempdir().unwrap();
     let patch = [
         "*** Begin Patch",
         &format!(
             "*** Delete File: {}",
-            directory.join("missing.txt").display()
+            directory.path().join("missing.txt").display()
         ),
         "*** End Patch",
         "",
@@ -97,12 +91,11 @@ fn delete_missing_file_reports_delete_context() {
     assert!(!output.succeeded());
     assert!(output.stderr.contains("Failed to delete file"));
     assert!(!output.stderr.contains("Failed to inspect file"));
-    fs::remove_dir_all(directory).unwrap();
 }
 #[test]
 fn delete_directory_reports_reference_style_context() {
-    let directory = unique_temp_directory().unwrap();
-    let target_path = directory.join("target");
+    let directory = tempfile::tempdir().unwrap();
+    let target_path = directory.path().join("target");
     fs::create_dir_all(&target_path).unwrap();
     let patch = [
         "*** Begin Patch",
@@ -115,12 +108,11 @@ fn delete_directory_reports_reference_style_context() {
     assert!(!output.succeeded());
     assert!(output.stderr.contains("Failed to delete file"));
     assert!(output.stderr.contains("path is a directory"));
-    fs::remove_dir_all(directory).unwrap();
 }
 #[test]
 fn absolute_patch_path_is_applied() {
-    let directory = unique_temp_directory().unwrap();
-    let target_path = directory.join("target.txt");
+    let directory = tempfile::tempdir().unwrap();
+    let target_path = directory.path().join("target.txt");
     fs::write(&target_path, "old\n").unwrap();
     let patch = [
         "*** Begin Patch",
@@ -140,7 +132,6 @@ fn absolute_patch_path_is_applied() {
             .stdout
             .contains(&format!("M {}", target_path.display()))
     );
-    fs::remove_dir_all(directory).unwrap();
 }
 #[test]
 fn relative_patch_path_is_rejected() {
@@ -155,11 +146,4 @@ fn relative_patch_path_is_rejected() {
     let output = PatchRunner::apply(PatchExecution { patch: &patch });
     assert!(!output.succeeded());
     assert!(output.stderr.contains("patch paths must be absolute"));
-}
-fn unique_temp_directory() -> anyhow::Result<PathBuf> {
-    let suffix = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
-    let directory =
-        std::env::temp_dir().join(format!("apply-patch-mcp-{}-{suffix}", std::process::id()));
-    fs::create_dir_all(&directory)?;
-    Ok(directory)
 }

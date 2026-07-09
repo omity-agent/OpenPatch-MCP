@@ -141,8 +141,7 @@ struct LineAnalysis<'content> {
     stats: FileStats,
 }
 fn split_lines(contents: &str) -> LineAnalysis<'_> {
-    let line_capacity =
-        bytecount::count(contents.as_bytes(), b'\n') + usize::from(!contents.ends_with('\n'));
+    let line_capacity = crate::text::line_count(contents);
     let mut lines = Vec::with_capacity(line_capacity);
     let mut offsets = Vec::with_capacity(line_capacity);
     let mut start = 0;
@@ -159,12 +158,7 @@ fn split_lines(contents: &str) -> LineAnalysis<'_> {
         lines.push(line);
         offsets.push(start);
     }
-    let character_count = if contents.is_ascii() {
-        contents.len()
-    } else {
-        bytecount::num_chars(contents.as_bytes())
-    };
-    let stats = FileStats::from_counts(lines.len(), character_count);
+    let stats = FileStats::from_counts(lines.len(), crate::text::character_count(contents));
     LineAnalysis {
         lines,
         offsets,

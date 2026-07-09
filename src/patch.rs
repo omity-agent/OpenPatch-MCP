@@ -97,15 +97,11 @@ fn apply_hunk(hunk: FileHunk, summary: &mut Summary) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::apply_patch_text;
-    use std::{
-        fs,
-        path::PathBuf,
-        time::{SystemTime, UNIX_EPOCH},
-    };
+    use std::fs;
     #[test]
     fn failed_chunk_does_not_stop_following_chunks_in_same_file() {
-        let directory = unique_temp_directory().unwrap();
-        let target_path = directory.join("target.txt");
+        let directory = tempfile::tempdir().unwrap();
+        let target_path = directory.path().join("target.txt");
         fs::write(&target_path, "one\ntwo\nthree\n").unwrap();
         let patch = [
             "*** Begin Patch",
@@ -131,18 +127,20 @@ mod tests {
         );
         assert!(result.stderr.contains("Failed to find expected lines"));
         assert_eq!(fs::read_to_string(&target_path).unwrap(), "1\ntwo\n3\n");
-        fs::remove_dir_all(directory).unwrap();
     }
     #[test]
     fn output_includes_file_stats_before_and_after_changes() {
-        let directory = unique_temp_directory().unwrap();
-        let target_path = directory.join("target.txt");
-        let obsolete_path = directory.join("obsolete.txt");
+        let directory = tempfile::tempdir().unwrap();
+        let target_path = directory.path().join("target.txt");
+        let obsolete_path = directory.path().join("obsolete.txt");
         fs::write(&target_path, "old\n").unwrap();
         fs::write(&obsolete_path, "bye\n").unwrap();
         let patch = [
             "*** Begin Patch",
-            &format!("*** Add File: {}", directory.join("hello.txt").display()),
+            &format!(
+                "*** Add File: {}",
+                directory.path().join("hello.txt").display()
+            ),
             "+hello",
             "+world",
             &format!("*** Update File: {}", target_path.display()),
@@ -158,7 +156,7 @@ mod tests {
         assert!(result.stderr.is_empty(), "{}", result.stderr);
         assert!(result.stdout.contains(&format!(
             "A {} (before: 0 lines, 0 chars; after: 2 lines, 12 chars)",
-            directory.join("hello.txt").display()
+            directory.path().join("hello.txt").display()
         )));
         assert!(result.stdout.contains(&format!(
             "M {} (before: 1 lines, 4 chars; after: 1 lines, 4 chars)",
@@ -168,13 +166,5 @@ mod tests {
             "D {} (before: 1 lines, 4 chars; after: 0 lines, 0 chars)",
             obsolete_path.display()
         )));
-        fs::remove_dir_all(directory).unwrap();
-    }
-    fn unique_temp_directory() -> anyhow::Result<PathBuf> {
-        let suffix = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
-        let directory =
-            std::env::temp_dir().join(format!("apply-patch-mcp-{}-{suffix}", std::process::id()));
-        fs::create_dir_all(&directory)?;
-        Ok(directory)
     }
 }

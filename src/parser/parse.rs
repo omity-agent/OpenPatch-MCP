@@ -64,7 +64,7 @@ fn parse_add(
         contents.push_str(content);
         contents.push('\n');
         line_count += 1;
-        character_count += line_character_count(content) + 1;
+        character_count += crate::text::character_count(content) + 1;
         index += 1;
     }
     Ok((
@@ -186,11 +186,4 @@ fn parse_path(path: &str, marker_index: usize) -> Result<PathBuf, ParseFailure> 
         ));
     }
     Ok(expanded)
-}
-fn line_character_count(line: &str) -> usize {
-    if line.is_ascii() {
-        line.len()
-    } else {
-        bytecount::num_chars(line.as_bytes())
-    }
 }

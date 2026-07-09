@@ -6,3 +6,4 @@ mod patch;
 mod path_expansion;
 mod seek_sequence;
 pub mod server;
+mod text;

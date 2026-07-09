@@ -67,11 +67,7 @@ mod tests {
         ClientHandler, ServiceExt,
         model::{CallToolRequestParams, ClientRequest, Request},
     };
-    use std::{
-        fs,
-        path::PathBuf,
-        time::{SystemTime, UNIX_EPOCH},
-    };
+    use std::fs;
     #[derive(Clone, Default)]
     struct TestClient;
     #[expect(
@@ -81,8 +77,8 @@ mod tests {
     impl ClientHandler for TestClient {}
     #[tokio::test]
     async fn mcp_call_applies_multiline_patch_with_embedded_runner() {
-        let directory = unique_temp_directory().unwrap();
-        let target_path = directory.join("target.txt");
+        let directory = tempfile::tempdir().unwrap();
+        let target_path = directory.path().join("target.txt");
         fs::write(&target_path, "old\n").unwrap();
         let application = Application::new();
         let (server_transport, client_transport) = tokio::io::duplex(8192);
@@ -116,13 +112,5 @@ mod tests {
         assert_eq!(fs::read_to_string(&target_path).unwrap(), "new\n");
         client.cancel().await.unwrap();
         server_handle.await.unwrap().unwrap();
-        fs::remove_dir_all(directory).unwrap();
-    }
-    fn unique_temp_directory() -> anyhow::Result<PathBuf> {
-        let suffix = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
-        let directory =
-            std::env::temp_dir().join(format!("apply-patch-mcp-{}-{suffix}", std::process::id()));
-        fs::create_dir_all(&directory)?;
-        Ok(directory)
     }
 }

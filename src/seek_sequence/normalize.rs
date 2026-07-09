@@ -1,25 +1,39 @@
 use alloc::borrow::Cow;
+use unicode_normalization::UnicodeNormalization as _;
 pub(super) fn normalize(source: &str) -> Cow<'_, str> {
     let trimmed = source.trim();
-    if trimmed.is_ascii() {
-        return Cow::Borrowed(trimmed);
+    let unicode_normalized = normalize_unicode(trimmed);
+    let normalized = unicode_normalized.as_ref();
+    if normalized.is_ascii() {
+        return unicode_normalized;
     }
-    let mut normalized: Option<String> = None;
-    for (index, character) in trimmed.char_indices() {
+    let mut punctuation_normalized: Option<String> = None;
+    for (index, character) in normalized.char_indices() {
         let replacement = normalize_character(character);
-        if let Some(output) = normalized.as_mut() {
+        if let Some(output) = punctuation_normalized.as_mut() {
             output.push(replacement);
         } else if replacement != character {
-            let mut output = String::with_capacity(trimmed.len());
-            let Some(prefix) = trimmed.get(..index) else {
+            let mut output = String::with_capacity(normalized.len());
+            let Some(prefix) = normalized.get(..index) else {
                 panic!("char index must be a string boundary");
             };
             output.push_str(prefix);
             output.push(replacement);
-            normalized = Some(output);
+            punctuation_normalized = Some(output);
         }
     }
-    normalized.map_or(Cow::Borrowed(trimmed), Cow::Owned)
+    punctuation_normalized.map_or(unicode_normalized, Cow::Owned)
+}
+fn normalize_unicode(source: &str) -> Cow<'_, str> {
+    if source.is_ascii() {
+        return Cow::Borrowed(source);
+    }
+    let normalized = source.nfkc().collect::<String>();
+    if normalized == source {
+        Cow::Borrowed(source)
+    } else {
+        Cow::Owned(normalized)
+    }
 }
 pub(super) fn collapse_spaces(source: &str) -> Cow<'_, str> {
     let normalized = normalize(source);
