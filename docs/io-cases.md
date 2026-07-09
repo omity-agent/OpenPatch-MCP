@@ -4,12 +4,9 @@
 
 ```json
 {
-  "cwd": "C:/work/example",
   "patch": "..."
 }
 ```
-
-`cwd` 可以省略，省略时使用 MCP server 进程当前目录。patch 内的文件路径可以是相对路径或绝对路径；相对路径会基于 `cwd` 解析。
 
 返回文本统一为：
 
@@ -41,7 +38,7 @@ stderr:
 
 ```text
 *** Begin Patch
-*** Add File: hello.txt
+*** Add File: C:/work/example/hello.txt
 +hello
 +world
 *** End Patch
@@ -53,7 +50,7 @@ stderr:
 exit_code: 0
 stdout:
 Success. Updated the following files:
-A hello.txt (before: 0 lines, 0 chars; after: 2 lines, 12 chars)
+A C:/work/example/hello.txt (before: 0 lines, 0 chars; after: 2 lines, 12 chars)
 
 stderr:
 ```
@@ -73,7 +70,7 @@ world
 
 ```text
 *** Begin Patch
-*** Add File: empty.txt
+*** Add File: C:/work/example/empty.txt
 *** End Patch
 ```
 
@@ -83,7 +80,7 @@ world
 exit_code: 0
 stdout:
 Success. Updated the following files:
-A empty.txt (before: 0 lines, 0 chars; after: 0 lines, 0 chars)
+A C:/work/example/empty.txt (before: 0 lines, 0 chars; after: 0 lines, 0 chars)
 
 stderr:
 ```
@@ -100,7 +97,7 @@ empty.txt 为空文件
 
 ```text
 *** Begin Patch
-*** Add File: docs/example.txt
+*** Add File: C:/work/example/docs/example.txt
 +created with parent directories
 *** End Patch
 ```
@@ -111,7 +108,7 @@ empty.txt 为空文件
 exit_code: 0
 stdout:
 Success. Updated the following files:
-A docs/example.txt (before: 0 lines, 0 chars; after: 1 lines, 32 chars)
+A C:/work/example/docs/example.txt (before: 0 lines, 0 chars; after: 1 lines, 32 chars)
 
 stderr:
 ```
@@ -132,7 +129,7 @@ old
 
 ```text
 *** Begin Patch
-*** Update File: target.txt
+*** Update File: C:/work/example/target.txt
 @@
 -old
 +new
@@ -145,7 +142,7 @@ old
 exit_code: 0
 stdout:
 Success. Updated the following files:
-M target.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
+M C:/work/example/target.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
 
 stderr:
 ```
@@ -175,7 +172,7 @@ omega
 
 ```text
 *** Begin Patch
-*** Update File: target.txt
+*** Update File: C:/work/example/target.txt
 @@ anchor
 -old
 +new
@@ -188,7 +185,7 @@ omega
 exit_code: 0
 stdout:
 Success. Updated the following files:
-M target.txt (before: 4 lines, 23 chars; after: 4 lines, 23 chars)
+M C:/work/example/target.txt (before: 4 lines, 23 chars; after: 4 lines, 23 chars)
 
 stderr:
 ```
@@ -220,7 +217,7 @@ three
 
 ```text
 *** Begin Patch
-*** Update File: target.txt
+*** Update File: C:/work/example/target.txt
 @@
 -one
 +1
@@ -236,7 +233,7 @@ three
 exit_code: 0
 stdout:
 Success. Updated the following files:
-M target.txt (before: 3 lines, 14 chars; after: 3 lines, 8 chars)
+M C:/work/example/target.txt (before: 3 lines, 14 chars; after: 3 lines, 8 chars)
 
 stderr:
 ```
@@ -267,7 +264,7 @@ three
 
 ```text
 *** Begin Patch
-*** Update File: target.txt
+*** Update File: C:/work/example/target.txt
 @@
 -one
 +1
@@ -286,7 +283,7 @@ three
 exit_code: 1
 stdout:
 Updated the following files:
-M target.txt (before: 3 lines, 14 chars; after: 3 lines, 8 chars)
+M C:/work/example/target.txt (before: 3 lines, 14 chars; after: 3 lines, 8 chars)
 
 stderr:
 Failed to find expected lines in C:/work/example/target.txt:
@@ -317,7 +314,7 @@ alpha
 
 ```text
 *** Begin Patch
-*** Update File: target.txt
+*** Update File: C:/work/example/target.txt
 @@
 +beta
 *** End Patch
@@ -329,7 +326,7 @@ alpha
 exit_code: 0
 stdout:
 Success. Updated the following files:
-M target.txt (before: 1 lines, 6 chars; after: 2 lines, 11 chars)
+M C:/work/example/target.txt (before: 1 lines, 6 chars; after: 2 lines, 11 chars)
 
 stderr:
 ```
@@ -357,7 +354,7 @@ obsolete
 
 ```text
 *** Begin Patch
-*** Delete File: obsolete.txt
+*** Delete File: C:/work/example/obsolete.txt
 *** End Patch
 ```
 
@@ -367,7 +364,7 @@ obsolete
 exit_code: 0
 stdout:
 Success. Updated the following files:
-D obsolete.txt (before: 1 lines, 9 chars; after: 0 lines, 0 chars)
+D C:/work/example/obsolete.txt (before: 1 lines, 9 chars; after: 0 lines, 0 chars)
 
 stderr:
 ```
@@ -388,8 +385,8 @@ content
 
 ```text
 *** Begin Patch
-*** Update File: old-name.txt
-*** Move to: new-name.txt
+*** Update File: C:/work/example/old-name.txt
+*** Move to: C:/work/example/new-name.txt
 *** End Patch
 ```
 
@@ -399,7 +396,7 @@ content
 exit_code: 0
 stdout:
 Success. Updated the following files:
-M new-name.txt (before: 1 lines, 8 chars; after: 1 lines, 8 chars)
+M C:/work/example/new-name.txt (before: 1 lines, 8 chars; after: 1 lines, 8 chars)
 
 stderr:
 ```
@@ -420,8 +417,8 @@ old
 
 ```text
 *** Begin Patch
-*** Update File: old-name.txt
-*** Move to: new-name.txt
+*** Update File: C:/work/example/old-name.txt
+*** Move to: C:/work/example/new-name.txt
 @@
 -old
 +new
@@ -434,7 +431,7 @@ old
 exit_code: 0
 stdout:
 Success. Updated the following files:
-M new-name.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
+M C:/work/example/new-name.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
 
 stderr:
 ```
@@ -461,13 +458,13 @@ b.txt 不存在
 
 ```text
 *** Begin Patch
-*** Update File: a.txt
+*** Update File: C:/work/example/a.txt
 @@
 -old
 +new
-*** Add File: b.txt
+*** Add File: C:/work/example/b.txt
 +created
-*** Update File: c.txt
+*** Update File: C:/work/example/c.txt
 @@
 -old
 +new
@@ -480,9 +477,9 @@ b.txt 不存在
 exit_code: 0
 stdout:
 Success. Updated the following files:
-A b.txt (before: 0 lines, 0 chars; after: 1 lines, 8 chars)
-M a.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
-M c.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
+A C:/work/example/b.txt (before: 0 lines, 0 chars; after: 1 lines, 8 chars)
+M C:/work/example/a.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
+M C:/work/example/c.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
 
 stderr:
 ```
@@ -509,15 +506,15 @@ c.txt: old
 
 ```text
 *** Begin Patch
-*** Update File: a.txt
+*** Update File: C:/work/example/a.txt
 @@
 -old
 +new
-*** Update File: b.txt
+*** Update File: C:/work/example/b.txt
 @@
 -missing
 +changed
-*** Update File: c.txt
+*** Update File: C:/work/example/c.txt
 @@
 -old
 +new
@@ -530,8 +527,8 @@ c.txt: old
 exit_code: 1
 stdout:
 Updated the following files:
-M a.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
-M c.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
+M C:/work/example/a.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
+M C:/work/example/c.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
 
 stderr:
 Failed to find expected lines in C:/work/example/b.txt:
@@ -562,15 +559,15 @@ c.txt: kept
 
 ```text
 *** Begin Patch
-*** Update File: a.txt
+*** Update File: C:/work/example/a.txt
 @@
 -missing-a
 +new-a
-*** Update File: b.txt
+*** Update File: C:/work/example/b.txt
 @@
 -old
 +new
-*** Update File: c.txt
+*** Update File: C:/work/example/c.txt
 @@
 -missing-c
 +new-c
@@ -583,7 +580,7 @@ c.txt: kept
 exit_code: 1
 stdout:
 Updated the following files:
-M b.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
+M C:/work/example/b.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
 
 stderr:
 Failed to find expected lines in C:/work/example/a.txt:
@@ -606,8 +603,7 @@ c.txt: kept
 
 ```json
 {
-  "patch": "",
-  "cwd": "C:/work/example"
+  "patch": ""
 }
 ```
 
@@ -619,31 +615,35 @@ patch must not be empty
 
 说明：这个场景在 MCP 请求层直接失败，不会进入 patch runner，因此没有 `exit_code` 包装。
 
-## 15. cwd 不存在或不是目录
+## 15. patch 路径不是绝对路径
 
-输入参数：
+输入：
 
-```json
-{
-  "cwd": "C:/work/missing-directory",
-  "patch": "*** Begin Patch\n*** End Patch"
-}
+```text
+*** Begin Patch
+*** Add File: relative.txt
++hello
+*** End Patch
 ```
 
 输出：
 
 ```text
-cwd is not a directory: C:/work/missing-directory
+exit_code: 1
+stdout:
+
+stderr:
+Invalid patch hunk on line 2: patch paths must be absolute
 ```
 
-说明：这是 invalid params 错误，不会进入 patch runner。
+说明：相对路径会在解析 patch 时失败，不会进行文件写入。
 
 ## 16. patch 缺少 Begin 标记
 
 输入：
 
 ```text
-*** Update File: target.txt
+*** Update File: C:/work/example/target.txt
 @@
 -old
 +new
@@ -666,7 +666,7 @@ Invalid patch: The first line of the patch must be '*** Begin Patch'
 
 ```text
 *** Begin Patch
-*** Update File: target.txt
+*** Update File: C:/work/example/target.txt
 @@
 -old
 +new
@@ -727,7 +727,7 @@ Invalid patch hunk on line 2: expected file operation marker
 
 ```text
 *** Begin Patch
-*** Add File: target.txt
+*** Add File: C:/work/example/target.txt
 hello
 *** End Patch
 ```
@@ -748,7 +748,7 @@ Invalid patch hunk on line 3: add file lines must start with '+'
 
 ```text
 *** Begin Patch
-*** Update File: target.txt
+*** Update File: C:/work/example/target.txt
 *** End Patch
 ```
 
@@ -770,7 +770,7 @@ Invalid patch hunk on line 2: update file hunk has no changes
 
 ```text
 *** Begin Patch
-*** Update File: target.txt
+*** Update File: C:/work/example/target.txt
 -old
 +new
 *** End Patch
@@ -792,7 +792,7 @@ Invalid patch hunk on line 3: expected '@@' change marker
 
 ```text
 *** Begin Patch
-*** Update File: target.txt
+*** Update File: C:/work/example/target.txt
 @@
 old
 *** End Patch
@@ -822,7 +822,7 @@ actual
 
 ```text
 *** Begin Patch
-*** Update File: target.txt
+*** Update File: C:/work/example/target.txt
 @@
 -expected
 +new
@@ -864,7 +864,7 @@ old
 
 ```text
 *** Begin Patch
-*** Update File: target.txt
+*** Update File: C:/work/example/target.txt
 @@ missing-anchor
 -old
 +new
@@ -888,7 +888,7 @@ Failed to find context 'missing-anchor' in C:/work/example/target.txt
 
 ```text
 *** Begin Patch
-*** Update File: missing.txt
+*** Update File: C:/work/example/missing.txt
 @@
 -old
 +new
@@ -914,7 +914,7 @@ Failed to read file to update C:/work/example/missing.txt: 系统找不到指定
 
 ```text
 *** Begin Patch
-*** Delete File: missing.txt
+*** Delete File: C:/work/example/missing.txt
 *** End Patch
 ```
 
@@ -943,7 +943,7 @@ target 是目录
 
 ```text
 *** Begin Patch
-*** Delete File: target
+*** Delete File: C:/work/example/target
 *** End Patch
 ```
 
@@ -965,7 +965,7 @@ Failed to delete file C:/work/example/target: path is a directory
 ```text
 <<'EOF'
 *** Begin Patch
-*** Update File: target.txt
+*** Update File: C:/work/example/target.txt
 @@
 -old
 +new
@@ -979,7 +979,7 @@ EOF
 exit_code: 0
 stdout:
 Success. Updated the following files:
-M target.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
+M C:/work/example/target.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
 
 stderr:
 ```
@@ -1008,7 +1008,7 @@ target.txt
 
 ```text
 *** Begin Patch
-*** Update File: target.txt
+*** Update File: C:/work/example/target.txt
 @@
 -old
 +new
@@ -1039,7 +1039,7 @@ new
 环境变量：
 
 ```text
-PATCH_DIR=docs
+PATCH_DIR=C:/work/example/docs
 PATCH_FILE=example.txt
 ```
 
@@ -1058,7 +1058,7 @@ PATCH_FILE=example.txt
 exit_code: 0
 stdout:
 Success. Updated the following files:
-A docs/example.txt (before: 0 lines, 0 chars; after: 1 lines, 6 chars)
+A C:/work/example/docs/example.txt (before: 0 lines, 0 chars; after: 1 lines, 6 chars)
 
 stderr:
 ```

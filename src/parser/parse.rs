@@ -177,7 +177,15 @@ fn is_chunk_marker(line: &str) -> bool {
     line == EMPTY_CHANGE_CONTEXT_MARKER || line.starts_with(CHANGE_CONTEXT_MARKER)
 }
 fn parse_path(path: &str, marker_index: usize) -> Result<PathBuf, ParseFailure> {
-    expand_path(path).map_err(|error| ParseFailure::hunk(marker_index + 1, &error.to_string()))
+    let expanded = expand_path(path)
+        .map_err(|error| ParseFailure::hunk(marker_index + 1, &error.to_string()))?;
+    if !expanded.is_absolute() {
+        return Err(ParseFailure::hunk(
+            marker_index + 1,
+            "patch paths must be absolute",
+        ));
+    }
+    Ok(expanded)
 }
 fn line_character_count(line: &str) -> usize {
     if line.is_ascii() {

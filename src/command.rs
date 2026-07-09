@@ -1,8 +1,4 @@
-use crate::{
-    patch::{ApplyResult, apply_patch_text},
-    path_expansion::expand_path,
-};
-use std::path::{Path, PathBuf};
+use crate::patch::{ApplyResult, apply_patch_text};
 #[derive(Debug, Clone, Default)]
 pub struct PatchRunner;
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,11 +10,10 @@ pub struct PatchOutput {
 #[derive(Debug, Copy, Clone)]
 pub struct PatchExecution<'request> {
     pub patch: &'request str,
-    pub cwd: &'request Path,
 }
 impl PatchRunner {
     pub fn apply(request: PatchExecution<'_>) -> PatchOutput {
-        let ApplyResult { stdout, stderr } = apply_patch_text(request.patch, request.cwd);
+        let ApplyResult { stdout, stderr } = apply_patch_text(request.patch);
         let status = i32::from(!stderr.is_empty());
         PatchOutput {
             status: Some(status),
@@ -50,18 +45,6 @@ impl PatchOutput {
         output.push_str(&self.stderr);
         output
     }
-}
-pub fn normalize_cwd(cwd: Option<String>) -> anyhow::Result<PathBuf> {
-    let resolved_cwd = match cwd {
-        Some(path) => expand_path(&path).map_err(anyhow::Error::from)?,
-        None => std::env::current_dir()?,
-    };
-    anyhow::ensure!(
-        resolved_cwd.is_dir(),
-        "cwd is not a directory: {}",
-        resolved_cwd.display()
-    );
-    Ok(resolved_cwd)
 }
 #[cfg(test)]
 mod tests;

@@ -1,4 +1,4 @@
-use super::{PatchExecution, PatchOutput, PatchRunner, normalize_cwd};
+use super::{PatchExecution, PatchOutput, PatchRunner};
 use std::{
     fs,
     path::PathBuf,
@@ -16,18 +16,13 @@ fn success_requires_zero_status() {
     );
 }
 #[test]
-fn missing_cwd_uses_current_dir() {
-    let result = normalize_cwd(None);
-    assert!(result.as_ref().is_ok_and(|path| path.is_dir()));
-}
-#[test]
 fn multiline_patch_is_applied_without_executable() {
     let directory = unique_temp_directory().unwrap();
     let target_path = directory.join("target.txt");
     fs::write(&target_path, "old\n").unwrap();
     let patch = [
         "*** Begin Patch",
-        "*** Update File: target.txt",
+        &format!("*** Update File: {}", target_path.display()),
         "@@",
         "-old",
         "+new",
@@ -35,10 +30,7 @@ fn multiline_patch_is_applied_without_executable() {
         "",
     ]
     .join("\n");
-    let output = PatchRunner::apply(PatchExecution {
-        patch: &patch,
-        cwd: &directory,
-    });
+    let output = PatchRunner::apply(PatchExecution { patch: &patch });
     assert!(output.succeeded(), "{}", output.render());
     assert_eq!(fs::read_to_string(&target_path).unwrap(), "new\n");
     fs::remove_dir_all(directory).unwrap();
@@ -54,15 +46,15 @@ fn failed_update_does_not_stop_following_files() {
     fs::write(&third_path, "old\n").unwrap();
     let patch = [
         "*** Begin Patch",
-        "*** Update File: a.txt",
+        &format!("*** Update File: {}", first_path.display()),
         "@@",
         "-old",
         "+new",
-        "*** Update File: b.txt",
+        &format!("*** Update File: {}", second_path.display()),
         "@@",
         "-missing",
         "+changed",
-        "*** Update File: c.txt",
+        &format!("*** Update File: {}", third_path.display()),
         "@@",
         "-old",
         "+new",
@@ -70,16 +62,21 @@ fn failed_update_does_not_stop_following_files() {
         "",
     ]
     .join("\n");
-    let output = PatchRunner::apply(PatchExecution {
-        patch: &patch,
-        cwd: &directory,
-    });
+    let output = PatchRunner::apply(PatchExecution { patch: &patch });
     assert!(!output.succeeded());
     assert_eq!(fs::read_to_string(&first_path).unwrap(), "new\n");
     assert_eq!(fs::read_to_string(&second_path).unwrap(), "kept\n");
     assert_eq!(fs::read_to_string(&third_path).unwrap(), "new\n");
-    assert!(output.stdout.contains("M a.txt"));
-    assert!(output.stdout.contains("M c.txt"));
+    assert!(
+        output
+            .stdout
+            .contains(&format!("M {}", first_path.display()))
+    );
+    assert!(
+        output
+            .stdout
+            .contains(&format!("M {}", third_path.display()))
+    );
     assert!(output.stderr.contains("Failed to find expected lines"));
     fs::remove_dir_all(directory).unwrap();
 }
@@ -88,15 +85,15 @@ fn delete_missing_file_reports_delete_context() {
     let directory = unique_temp_directory().unwrap();
     let patch = [
         "*** Begin Patch",
-        "*** Delete File: missing.txt",
+        &format!(
+            "*** Delete File: {}",
+            directory.join("missing.txt").display()
+        ),
         "*** End Patch",
         "",
     ]
     .join("\n");
-    let output = PatchRunner::apply(PatchExecution {
-        patch: &patch,
-        cwd: &directory,
-    });
+    let output = PatchRunner::apply(PatchExecution { patch: &patch });
     assert!(!output.succeeded());
     assert!(output.stderr.contains("Failed to delete file"));
     assert!(!output.stderr.contains("Failed to inspect file"));
@@ -105,18 +102,16 @@ fn delete_missing_file_reports_delete_context() {
 #[test]
 fn delete_directory_reports_reference_style_context() {
     let directory = unique_temp_directory().unwrap();
-    fs::create_dir_all(directory.join("target")).unwrap();
+    let target_path = directory.join("target");
+    fs::create_dir_all(&target_path).unwrap();
     let patch = [
         "*** Begin Patch",
-        "*** Delete File: target",
+        &format!("*** Delete File: {}", target_path.display()),
         "*** End Patch",
         "",
     ]
     .join("\n");
-    let output = PatchRunner::apply(PatchExecution {
-        patch: &patch,
-        cwd: &directory,
-    });
+    let output = PatchRunner::apply(PatchExecution { patch: &patch });
     assert!(!output.succeeded());
     assert!(output.stderr.contains("Failed to delete file"));
     assert!(output.stderr.contains("path is a directory"));
@@ -137,10 +132,7 @@ fn absolute_patch_path_is_applied() {
         "",
     ]
     .join("\n");
-    let output = PatchRunner::apply(PatchExecution {
-        patch: &patch,
-        cwd: &directory,
-    });
+    let output = PatchRunner::apply(PatchExecution { patch: &patch });
     assert!(output.succeeded(), "{}", output.render());
     assert_eq!(fs::read_to_string(&target_path).unwrap(), "new\n");
     assert!(
@@ -149,6 +141,20 @@ fn absolute_patch_path_is_applied() {
             .contains(&format!("M {}", target_path.display()))
     );
     fs::remove_dir_all(directory).unwrap();
+}
+#[test]
+fn relative_patch_path_is_rejected() {
+    let patch = [
+        "*** Begin Patch",
+        "*** Add File: relative.txt",
+        "+hello",
+        "*** End Patch",
+        "",
+    ]
+    .join("\n");
+    let output = PatchRunner::apply(PatchExecution { patch: &patch });
+    assert!(!output.succeeded());
+    assert!(output.stderr.contains("patch paths must be absolute"));
 }
 fn unique_temp_directory() -> anyhow::Result<PathBuf> {
     let suffix = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();

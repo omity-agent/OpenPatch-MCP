@@ -5,15 +5,14 @@ use crate::{
     parser::{FileHunk, parse_patch},
     patch::{content::derive_new_contents, fs_ops::FileWriter},
 };
-use std::path::Path;
 use summary::{FileChange, FileStats, Summary};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplyResult {
     pub stdout: String,
     pub stderr: String,
 }
-pub fn apply_patch_text(patch: &str, cwd: &Path) -> ApplyResult {
-    match apply_patch_text_inner(patch, cwd) {
+pub fn apply_patch_text(patch: &str) -> ApplyResult {
+    match apply_patch_text_inner(patch) {
         Ok(summary) => ApplyResult {
             stdout: summary.render(),
             stderr: summary.render_errors(),
@@ -24,23 +23,18 @@ pub fn apply_patch_text(patch: &str, cwd: &Path) -> ApplyResult {
         },
     }
 }
-fn apply_patch_text_inner(patch: &str, cwd: &Path) -> anyhow::Result<Summary> {
+fn apply_patch_text_inner(patch: &str) -> anyhow::Result<Summary> {
     let hunks = parse_patch(patch)?;
     anyhow::ensure!(!hunks.is_empty(), "No files were modified.");
-    let writer = FileWriter::new(cwd);
     let mut summary = Summary::default();
     for hunk in hunks {
-        if let Err(error) = apply_hunk(&writer, hunk, &mut summary) {
+        if let Err(error) = apply_hunk(hunk, &mut summary) {
             summary.errors.push(error.to_string());
         }
     }
     Ok(summary)
 }
-fn apply_hunk(
-    writer: &FileWriter<'_>,
-    hunk: FileHunk,
-    summary: &mut Summary,
-) -> anyhow::Result<()> {
+fn apply_hunk(hunk: FileHunk, summary: &mut Summary) -> anyhow::Result<()> {
     match hunk {
         FileHunk::Add {
             path,
@@ -49,13 +43,13 @@ fn apply_hunk(
             character_count,
         } => {
             let after = FileStats::from_counts(line_count, character_count);
-            writer.write_with_parent_retry(&path, contents)?;
+            FileWriter::write_with_parent_retry(&path, contents)?;
             summary
                 .added
                 .push(FileChange::new(path, FileStats::empty(), after));
         }
         FileHunk::Delete { path } => {
-            let (target, original_contents) = writer.read_file_to_delete(&path)?;
+            let (target, original_contents) = FileWriter::read_file_to_delete(&path)?;
             let before = FileStats::from_contents(&original_contents);
             FileWriter::delete_resolved_file(&target)?;
             summary
@@ -67,11 +61,11 @@ fn apply_hunk(
             move_path,
             chunks,
         } => {
-            let (source, original_contents) = writer.read_file_to_update(&path)?;
+            let (source, original_contents) = FileWriter::read_file_to_update(&path)?;
             if chunks.is_empty() {
                 let before = FileStats::from_contents(&original_contents);
                 if let Some(destination_path) = move_path {
-                    writer.write_with_parent_retry(&destination_path, original_contents)?;
+                    FileWriter::write_with_parent_retry(&destination_path, original_contents)?;
                     FileWriter::delete_resolved_original(&source)?;
                     summary
                         .modified
@@ -85,7 +79,7 @@ fn apply_hunk(
             if let Some(destination_path) = move_path {
                 if derived.applied_chunks > 0 {
                     let after = FileStats::from_contents(&derived.contents);
-                    writer.write_with_parent_retry(&destination_path, derived.contents)?;
+                    FileWriter::write_with_parent_retry(&destination_path, derived.contents)?;
                     FileWriter::delete_resolved_original(&source)?;
                     summary
                         .modified
@@ -115,7 +109,7 @@ mod tests {
         fs::write(&target_path, "one\ntwo\nthree\n").unwrap();
         let patch = [
             "*** Begin Patch",
-            "*** Update File: target.txt",
+            &format!("*** Update File: {}", target_path.display()),
             "@@",
             "-one",
             "+1",
@@ -129,8 +123,12 @@ mod tests {
             "",
         ]
         .join("\n");
-        let result = apply_patch_text(&patch, &directory);
-        assert!(result.stdout.contains("M target.txt"));
+        let result = apply_patch_text(&patch);
+        assert!(
+            result
+                .stdout
+                .contains(&format!("M {}", target_path.display()))
+        );
         assert!(result.stderr.contains("Failed to find expected lines"));
         assert_eq!(fs::read_to_string(&target_path).unwrap(), "1\ntwo\n3\n");
         fs::remove_dir_all(directory).unwrap();
@@ -144,35 +142,32 @@ mod tests {
         fs::write(&obsolete_path, "bye\n").unwrap();
         let patch = [
             "*** Begin Patch",
-            "*** Add File: hello.txt",
+            &format!("*** Add File: {}", directory.join("hello.txt").display()),
             "+hello",
             "+world",
-            "*** Update File: target.txt",
+            &format!("*** Update File: {}", target_path.display()),
             "@@",
             "-old",
             "+new",
-            "*** Delete File: obsolete.txt",
+            &format!("*** Delete File: {}", obsolete_path.display()),
             "*** End Patch",
             "",
         ]
         .join("\n");
-        let result = apply_patch_text(&patch, &directory);
+        let result = apply_patch_text(&patch);
         assert!(result.stderr.is_empty(), "{}", result.stderr);
-        assert!(
-            result
-                .stdout
-                .contains("A hello.txt (before: 0 lines, 0 chars; after: 2 lines, 12 chars)")
-        );
-        assert!(
-            result
-                .stdout
-                .contains("M target.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)")
-        );
-        assert!(
-            result
-                .stdout
-                .contains("D obsolete.txt (before: 1 lines, 4 chars; after: 0 lines, 0 chars)")
-        );
+        assert!(result.stdout.contains(&format!(
+            "A {} (before: 0 lines, 0 chars; after: 2 lines, 12 chars)",
+            directory.join("hello.txt").display()
+        )));
+        assert!(result.stdout.contains(&format!(
+            "M {} (before: 1 lines, 4 chars; after: 1 lines, 4 chars)",
+            target_path.display()
+        )));
+        assert!(result.stdout.contains(&format!(
+            "D {} (before: 1 lines, 4 chars; after: 0 lines, 0 chars)",
+            obsolete_path.display()
+        )));
         fs::remove_dir_all(directory).unwrap();
     }
     fn unique_temp_directory() -> anyhow::Result<PathBuf> {

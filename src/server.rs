@@ -1,4 +1,4 @@
-use crate::command::{PatchExecution, PatchRunner, normalize_cwd};
+use crate::command::{PatchExecution, PatchRunner};
 use rmcp::{
     ErrorData as McpError, ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
@@ -12,12 +12,7 @@ pub struct Application {
 }
 #[derive(Debug, Deserialize, schemars :: JsonSchema)]
 pub struct ApplyPatchRequest {
-    #[schemars(description = "Full apply-patch patch body beginning with *** Begin Patch")]
     pub patch: String,
-    #[schemars(
-        description = "Directory where apply-patch should run. Defaults to the MCP server process cwd."
-    )]
-    pub cwd: Option<String>,
 }
 #[tool_router]
 impl Application {
@@ -30,7 +25,7 @@ impl Application {
     }
     #[tool(
         name = "apply_patch",
-        description = "Apply a Codex apply-patch patch with the server's embedded implementation."
+        description = "Use the `apply_patch` tool to edit files. This is a FREEFORM tool, so do not wrap the patch in JSON."
     )]
     async fn apply_patch(
         &self,
@@ -41,11 +36,8 @@ impl Application {
                 "patch must not be empty",
             )]));
         }
-        let cwd = normalize_cwd(request.cwd)
-            .map_err(|error| McpError::invalid_params(error.to_string(), None))?;
         let output = PatchRunner::apply(PatchExecution {
             patch: &request.patch,
-            cwd: &cwd,
         });
         let content = vec![ContentBlock::text(output.render())];
         if output.succeeded() {
@@ -104,7 +96,7 @@ mod tests {
             .unwrap();
         let patch = [
             "*** Begin Patch",
-            "*** Update File: target.txt",
+            &format!("*** Update File: {}", target_path.display()),
             "@@",
             "-old",
             "+new",
@@ -112,9 +104,7 @@ mod tests {
             "",
         ]
         .join("\n");
-        let arguments = rmcp::model::object(
-            rmcp :: serde_json :: json ! ({ "patch" : patch , "cwd" : directory . display () . to_string () , }),
-        );
+        let arguments = rmcp::model::object(rmcp :: serde_json :: json ! ({ "patch" : patch }));
         let request = ClientRequest::CallToolRequest(Request::new(
             CallToolRequestParams::new("apply_patch").with_arguments(arguments),
         ));

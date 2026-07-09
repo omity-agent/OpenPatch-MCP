@@ -2,21 +2,16 @@ use std::{
     fs, io,
     path::{Path, PathBuf},
 };
-pub(crate) struct FileWriter<'cwd> {
-    cwd: &'cwd Path,
-}
-impl<'cwd> FileWriter<'cwd> {
-    pub(crate) const fn new(cwd: &'cwd Path) -> Self {
-        Self { cwd }
-    }
-    pub(crate) fn read_file_to_update(&self, path: &Path) -> anyhow::Result<(PathBuf, String)> {
-        let source = self.resolve(path);
+pub(crate) struct FileWriter;
+impl FileWriter {
+    pub(crate) fn read_file_to_update(path: &Path) -> anyhow::Result<(PathBuf, String)> {
+        let source = path.to_path_buf();
         let contents = fs::read_to_string(&source)
             .map_err(|error| io_context(&error, "Failed to read file to update", &source))?;
         Ok((source, contents))
     }
-    pub(crate) fn read_file_to_delete(&self, path: &Path) -> anyhow::Result<(PathBuf, String)> {
-        let source = self.resolve(path);
+    pub(crate) fn read_file_to_delete(path: &Path) -> anyhow::Result<(PathBuf, String)> {
+        let source = path.to_path_buf();
         ensure_not_directory(&source)
             .map_err(|error| io_context(&error, "Failed to delete file", &source))?;
         let contents = fs::read_to_string(&source)
@@ -26,12 +21,8 @@ impl<'cwd> FileWriter<'cwd> {
     pub(crate) fn write_resolved_file(target: &Path, contents: String) -> anyhow::Result<()> {
         write_resolved_file(target, contents)
     }
-    pub(crate) fn write_with_parent_retry(
-        &self,
-        path: &Path,
-        contents: String,
-    ) -> anyhow::Result<()> {
-        let target = self.resolve(path);
+    pub(crate) fn write_with_parent_retry(path: &Path, contents: String) -> anyhow::Result<()> {
+        let target = path.to_path_buf();
         write_resolved_with_parent_retry(&target, contents)
     }
     pub(crate) fn delete_resolved_file(target: &Path) -> anyhow::Result<()> {
@@ -39,13 +30,6 @@ impl<'cwd> FileWriter<'cwd> {
     }
     pub(crate) fn delete_resolved_original(source: &Path) -> anyhow::Result<()> {
         delete_resolved_file(source, "Failed to remove original")
-    }
-    pub(crate) fn resolve(&self, path: &Path) -> PathBuf {
-        if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            self.cwd.join(path)
-        }
     }
 }
 fn write_resolved_file(target: &Path, contents: String) -> anyhow::Result<()> {
