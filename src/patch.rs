@@ -2,169 +2,173 @@ mod content;
 mod fs_ops;
 mod summary;
 use crate::{
-    parser::{FileHunk, parse_patch},
+    parser::{FileHunk, UpdateChunk, parse_patch},
     patch::{content::derive_new_contents, fs_ops::FileWriter},
 };
-use summary::{FileChange, FileStats, Summary};
+use std::path::PathBuf;
+use summary::{FileFailure, FileStats, FileSuccess, OperationKind, Summary};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplyResult {
-    pub stdout: String,
-    pub stderr: String,
+    pub output: String,
+    pub succeeded: bool,
 }
 pub fn apply_patch_text(patch: &str) -> ApplyResult {
-    match apply_patch_text_inner(patch) {
-        Ok(summary) => ApplyResult {
-            stdout: summary.render(),
-            stderr: summary.render_errors(),
-        },
-        Err(error) => ApplyResult {
-            stdout: String::new(),
-            stderr: format!("{error}\n"),
-        },
+    let summary = if patch.trim().is_empty() {
+        Summary::failed(String::from("patch must not be empty"))
+    } else {
+        apply_patch_text_inner(patch)
+    };
+    ApplyResult {
+        succeeded: summary.succeeded(),
+        output: summary.render(),
     }
 }
-fn apply_patch_text_inner(patch: &str) -> anyhow::Result<Summary> {
-    let hunks = parse_patch(patch)?;
-    anyhow::ensure!(!hunks.is_empty(), "No files were modified.");
+fn apply_patch_text_inner(patch: &str) -> Summary {
+    let hunks = match parse_patch(patch) {
+        Ok(hunks) => hunks,
+        Err(error) => return Summary::failed(error.to_string()),
+    };
+    if hunks.is_empty() {
+        return Summary::failed(String::from("No files were modified."));
+    }
     let mut summary = Summary::default();
     for hunk in hunks {
-        if let Err(error) = apply_hunk(hunk, &mut summary) {
-            summary.errors.push(error.to_string());
-        }
+        apply_hunk(hunk, &mut summary);
     }
-    Ok(summary)
+    summary
 }
-fn apply_hunk(hunk: FileHunk, summary: &mut Summary) -> anyhow::Result<()> {
+fn apply_hunk(hunk: FileHunk, summary: &mut Summary) {
     match hunk {
         FileHunk::Add {
             path,
             contents,
             line_count,
             character_count,
-        } => {
-            let after = FileStats::from_counts(line_count, character_count);
-            FileWriter::write_with_parent_retry(&path, contents)?;
-            summary
-                .added
-                .push(FileChange::new(path, FileStats::empty(), after));
-        }
-        FileHunk::Delete { path } => {
-            let (target, original_contents) = FileWriter::read_file_to_delete(&path)?;
-            let before = FileStats::from_contents(&original_contents);
-            FileWriter::delete_resolved_file(&target)?;
-            summary
-                .deleted
-                .push(FileChange::new(path, before, FileStats::empty()));
-        }
+        } => apply_add(
+            path,
+            contents,
+            FileStats::from_counts(line_count, character_count),
+            summary,
+        ),
+        FileHunk::Delete { path } => apply_delete(path, summary),
         FileHunk::Update {
             path,
             move_path,
             chunks,
-        } => {
-            let (source, original_contents) = FileWriter::read_file_to_update(&path)?;
-            if chunks.is_empty() {
-                let before = FileStats::from_contents(&original_contents);
-                if let Some(destination_path) = move_path {
-                    FileWriter::write_with_parent_retry(&destination_path, original_contents)?;
-                    FileWriter::delete_resolved_original(&source)?;
-                    summary
-                        .modified
-                        .push(FileChange::new(destination_path, before, before));
-                }
-                return Ok(());
-            }
-            let derived = derive_new_contents(&source, &original_contents, &chunks);
-            let before = derived.before;
-            summary.errors.extend(derived.errors);
-            if let Some(destination_path) = move_path {
-                if derived.applied_chunks > 0 {
-                    let after = FileStats::from_contents(&derived.contents);
-                    FileWriter::write_with_parent_retry(&destination_path, derived.contents)?;
-                    FileWriter::delete_resolved_original(&source)?;
-                    summary
-                        .modified
-                        .push(FileChange::new(destination_path, before, after));
-                }
-            } else if derived.applied_chunks > 0 {
-                let after = FileStats::from_contents(&derived.contents);
-                FileWriter::write_resolved_file(&source, derived.contents)?;
-                summary.modified.push(FileChange::new(path, before, after));
-            }
+        } => apply_update(path, move_path, &chunks, summary),
+    }
+}
+fn apply_add(path: PathBuf, contents: String, after: FileStats, summary: &mut Summary) {
+    match FileWriter::write_with_parent_retry(&path, contents) {
+        Ok(()) => summary.push_success(FileSuccess::add(path, after)),
+        Err(error) => summary.push_failure(FileFailure::file(
+            OperationKind::Add,
+            path,
+            error.to_string(),
+        )),
+    }
+}
+fn apply_delete(path: PathBuf, summary: &mut Summary) {
+    let (target, original_contents) = match FileWriter::read_file_to_delete(&path) {
+        Ok(file) => file,
+        Err(error) => {
+            summary.push_failure(FileFailure::file(
+                OperationKind::Delete,
+                path,
+                error.to_string(),
+            ));
+            return;
+        }
+    };
+    let before = FileStats::from_contents(&original_contents);
+    match FileWriter::delete_resolved_file(&target) {
+        Ok(()) => summary.push_success(FileSuccess::delete(path, before)),
+        Err(error) => summary.push_failure(FileFailure::file(
+            OperationKind::Delete,
+            path,
+            error.to_string(),
+        )),
+    }
+}
+fn apply_update(
+    path: PathBuf,
+    move_path: Option<PathBuf>,
+    chunks: &[UpdateChunk],
+    summary: &mut Summary,
+) {
+    let (source, original_contents) = match FileWriter::read_file_to_update(&path) {
+        Ok(file) => file,
+        Err(error) => {
+            summary.push_failure(FileFailure::file(
+                OperationKind::Edit,
+                path,
+                error.to_string(),
+            ));
+            return;
+        }
+    };
+    if chunks.is_empty() {
+        if let Some(destination) = move_path {
+            apply_move(source, destination, original_contents, summary);
+        }
+        return;
+    }
+    let derived = derive_new_contents(&original_contents, chunks);
+    for reason in derived.errors {
+        summary.push_failure(FileFailure::file(OperationKind::Edit, path.clone(), reason));
+    }
+    if derived.applied_chunks == 0 {
+        return;
+    }
+    let after = FileStats::from_contents(&derived.contents);
+    if let Some(destination) = move_path {
+        apply_moved_edit(
+            source,
+            destination,
+            derived.contents,
+            derived.before,
+            after,
+            summary,
+        );
+    } else {
+        match FileWriter::write_resolved_file(&source, derived.contents) {
+            Ok(()) => summary.push_success(FileSuccess::edit(path, derived.before, after)),
+            Err(error) => summary.push_failure(FileFailure::file(
+                OperationKind::Edit,
+                path,
+                error.to_string(),
+            )),
         }
     }
-    Ok(())
+}
+fn apply_move(source: PathBuf, destination: PathBuf, contents: String, summary: &mut Summary) {
+    let stats = FileStats::from_contents(&contents);
+    apply_moved_edit(source, destination, contents, stats, stats, summary);
+}
+fn apply_moved_edit(
+    source: PathBuf,
+    destination: PathBuf,
+    contents: String,
+    before: FileStats,
+    after: FileStats,
+    summary: &mut Summary,
+) {
+    if let Err(error) = FileWriter::write_with_parent_retry(&destination, contents) {
+        summary.push_failure(FileFailure::file(
+            OperationKind::Edit,
+            destination,
+            error.to_string(),
+        ));
+        return;
+    }
+    summary.push_success(FileSuccess::edit(destination, before, after));
+    if let Err(error) = FileWriter::delete_resolved_original(&source) {
+        summary.push_failure(FileFailure::file(
+            OperationKind::Edit,
+            source,
+            error.to_string(),
+        ));
+    }
 }
 #[cfg(test)]
-mod tests {
-    use super::apply_patch_text;
-    use std::fs;
-    #[test]
-    fn failed_chunk_does_not_stop_following_chunks_in_same_file() {
-        let directory = tempfile::tempdir().unwrap();
-        let target_path = directory.path().join("target.txt");
-        fs::write(&target_path, "one\ntwo\nthree\n").unwrap();
-        let patch = [
-            "*** Begin Patch",
-            &format!("*** Update File: {}", target_path.display()),
-            "@@",
-            "-one",
-            "+1",
-            "@@",
-            "-missing",
-            "+changed",
-            "@@",
-            "-three",
-            "+3",
-            "*** End Patch",
-            "",
-        ]
-        .join("\n");
-        let result = apply_patch_text(&patch);
-        assert!(
-            result
-                .stdout
-                .contains(&format!("M {}", target_path.display()))
-        );
-        assert!(result.stderr.contains("Failed to find expected lines"));
-        assert_eq!(fs::read_to_string(&target_path).unwrap(), "1\ntwo\n3\n");
-    }
-    #[test]
-    fn output_includes_file_stats_before_and_after_changes() {
-        let directory = tempfile::tempdir().unwrap();
-        let target_path = directory.path().join("target.txt");
-        let obsolete_path = directory.path().join("obsolete.txt");
-        fs::write(&target_path, "old\n").unwrap();
-        fs::write(&obsolete_path, "bye\n").unwrap();
-        let patch = [
-            "*** Begin Patch",
-            &format!(
-                "*** Add File: {}",
-                directory.path().join("hello.txt").display()
-            ),
-            "+hello",
-            "+world",
-            &format!("*** Update File: {}", target_path.display()),
-            "@@",
-            "-old",
-            "+new",
-            &format!("*** Delete File: {}", obsolete_path.display()),
-            "*** End Patch",
-            "",
-        ]
-        .join("\n");
-        let result = apply_patch_text(&patch);
-        assert!(result.stderr.is_empty(), "{}", result.stderr);
-        assert!(result.stdout.contains(&format!(
-            "A {} (before: 0 lines, 0 chars; after: 2 lines, 12 chars)",
-            directory.path().join("hello.txt").display()
-        )));
-        assert!(result.stdout.contains(&format!(
-            "M {} (before: 1 lines, 4 chars; after: 1 lines, 4 chars)",
-            target_path.display()
-        )));
-        assert!(result.stdout.contains(&format!(
-            "D {} (before: 1 lines, 4 chars; after: 0 lines, 0 chars)",
-            obsolete_path.display()
-        )));
-    }
-}
+mod tests;

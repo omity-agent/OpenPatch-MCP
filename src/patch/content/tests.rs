@@ -1,6 +1,5 @@
 use super::{derive_new_contents, replacements::Replacement, replacements::apply_replacements};
 use crate::parser::UpdateChunk;
-use std::path::Path;
 #[test]
 fn insertion_without_old_lines_precedes_logical_trailing_empty_line() {
     let chunk = UpdateChunk {
@@ -9,7 +8,7 @@ fn insertion_without_old_lines_precedes_logical_trailing_empty_line() {
         new_lines: vec![String::from("b")].into(),
         is_end_of_file: false,
     };
-    let result = derive_new_contents(Path::new("target.txt"), "a\n\n", &[chunk]);
+    let result = derive_new_contents("a\n\n", &[chunk]);
     assert_eq!(result.contents, "a\nb\n");
     assert_eq!(result.applied_chunks, 1);
     assert!(result.errors.is_empty());
@@ -22,7 +21,7 @@ fn replacement_can_ignore_empty_lines_in_original() {
         new_lines: vec![String::from("updated")].into(),
         is_end_of_file: false,
     };
-    let result = derive_new_contents(Path::new("target.txt"), "a\n\nb\nc\n", &[chunk]);
+    let result = derive_new_contents("a\n\nb\nc\n", &[chunk]);
     assert_eq!(result.contents, "updated\nc\n");
     assert_eq!(result.applied_chunks, 1);
     assert!(result.errors.is_empty());
@@ -35,7 +34,7 @@ fn replacement_can_ignore_consecutive_space_counts() {
         new_lines: vec![String::from("updated")].into(),
         is_end_of_file: false,
     };
-    let result = derive_new_contents(Path::new("target.txt"), "a  b\n\nc   d\n", &[chunk]);
+    let result = derive_new_contents("a  b\n\nc   d\n", &[chunk]);
     assert_eq!(result.contents, "updated\n");
     assert_eq!(result.applied_chunks, 1);
     assert!(result.errors.is_empty());

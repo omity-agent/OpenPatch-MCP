@@ -8,23 +8,11 @@
 }
 ```
 
-返回文本统一为：
+返回文本由成功与失败两个可选分区组成。存在成功项时输出 `<SUCCEEDED>`，存在失败项时输出 `<FAILED>`；部分成功的结果会同时包含两个分区。成功操作按原 patch 中的顺序排列。
 
-```text
-exit_code: <0 或 1>
-stdout:
-<成功应用的文件摘要>
-stderr:
-<失败信息>
-```
+成功的新增、编辑和删除分别使用 `<ADD>`、`<EDIT>` 和 `<DELETE>` 块。新增仅包含修改后的统计，编辑同时包含修改前后的统计，删除仅包含修改前的统计。能归属文件操作的失败使用对应的操作块，并在路径后放置 `<REASON>`；解析错误等全局失败在 `<FAILED>` 下放置 `<REASON>`。
 
-成功应用的文件摘要中，每个文件行格式为：
-
-```text
-<A|M|D> <path> (before: <修改前行数> lines, <修改前字符数> chars; after: <修改后行数> lines, <修改后字符数> chars)
-```
-
-如果 `exit_code` 为 `1`，MCP tool result 会被标记为 error；如果为 `0`，会被标记为 success。
+这种格式不是标准 XML，路径、原因等内容不会转义。MCP tool result 的 `is_error` 由结果中是否存在失败项决定。
 
 ## 1. 新增文件
 
@@ -47,12 +35,12 @@ stderr:
 输出：
 
 ```text
-exit_code: 0
-stdout:
-Success. Updated the following files:
-A C:/work/example/hello.txt (before: 0 lines, 0 chars; after: 2 lines, 12 chars)
-
-stderr:
+<SUCCEEDED>
+<ADD>
+C:/work/example/hello.txt
+after: 2 lines, 12 chars
+</ADD>
+</SUCCEEDED>
 ```
 
 最终文件：
@@ -77,12 +65,12 @@ world
 输出：
 
 ```text
-exit_code: 0
-stdout:
-Success. Updated the following files:
-A C:/work/example/empty.txt (before: 0 lines, 0 chars; after: 0 lines, 0 chars)
-
-stderr:
+<SUCCEEDED>
+<ADD>
+C:/work/example/empty.txt
+after: 0 lines, 0 chars
+</ADD>
+</SUCCEEDED>
 ```
 
 最终文件：
@@ -105,12 +93,12 @@ empty.txt 为空文件
 输出：
 
 ```text
-exit_code: 0
-stdout:
-Success. Updated the following files:
-A C:/work/example/docs/example.txt (before: 0 lines, 0 chars; after: 1 lines, 32 chars)
-
-stderr:
+<SUCCEEDED>
+<ADD>
+C:/work/example/docs/example.txt
+after: 1 lines, 32 chars
+</ADD>
+</SUCCEEDED>
 ```
 
 结果：如果 `docs` 目录不存在，会自动创建父目录。
@@ -139,12 +127,13 @@ old
 输出：
 
 ```text
-exit_code: 0
-stdout:
-Success. Updated the following files:
-M C:/work/example/target.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
-
-stderr:
+<SUCCEEDED>
+<EDIT>
+C:/work/example/target.txt
+before: 1 lines, 4 chars
+after: 1 lines, 4 chars
+</EDIT>
+</SUCCEEDED>
 ```
 
 最终文件：
@@ -182,12 +171,13 @@ omega
 输出：
 
 ```text
-exit_code: 0
-stdout:
-Success. Updated the following files:
-M C:/work/example/target.txt (before: 4 lines, 23 chars; after: 4 lines, 23 chars)
-
-stderr:
+<SUCCEEDED>
+<EDIT>
+C:/work/example/target.txt
+before: 4 lines, 23 chars
+after: 4 lines, 23 chars
+</EDIT>
+</SUCCEEDED>
 ```
 
 最终文件：
@@ -230,12 +220,13 @@ three
 输出：
 
 ```text
-exit_code: 0
-stdout:
-Success. Updated the following files:
-M C:/work/example/target.txt (before: 3 lines, 14 chars; after: 3 lines, 8 chars)
-
-stderr:
+<SUCCEEDED>
+<EDIT>
+C:/work/example/target.txt
+before: 3 lines, 14 chars
+after: 3 lines, 8 chars
+</EDIT>
+</SUCCEEDED>
 ```
 
 最终文件：
@@ -280,14 +271,22 @@ three
 输出：
 
 ```text
-exit_code: 1
-stdout:
-Updated the following files:
-M C:/work/example/target.txt (before: 3 lines, 14 chars; after: 3 lines, 8 chars)
-
-stderr:
-Failed to find expected lines in C:/work/example/target.txt:
+<SUCCEEDED>
+<EDIT>
+C:/work/example/target.txt
+before: 3 lines, 14 chars
+after: 3 lines, 8 chars
+</EDIT>
+</SUCCEEDED>
+<FAILED>
+<EDIT>
+C:/work/example/target.txt
+<REASON>
+Failed to find expected lines:
 missing
+</REASON>
+</EDIT>
+</FAILED>
 ```
 
 最终文件：
@@ -323,12 +322,13 @@ alpha
 输出：
 
 ```text
-exit_code: 0
-stdout:
-Success. Updated the following files:
-M C:/work/example/target.txt (before: 1 lines, 6 chars; after: 2 lines, 11 chars)
-
-stderr:
+<SUCCEEDED>
+<EDIT>
+C:/work/example/target.txt
+before: 1 lines, 6 chars
+after: 2 lines, 11 chars
+</EDIT>
+</SUCCEEDED>
 ```
 
 最终文件：
@@ -361,12 +361,12 @@ obsolete
 输出：
 
 ```text
-exit_code: 0
-stdout:
-Success. Updated the following files:
-D C:/work/example/obsolete.txt (before: 1 lines, 9 chars; after: 0 lines, 0 chars)
-
-stderr:
+<SUCCEEDED>
+<DELETE>
+C:/work/example/obsolete.txt
+before: 1 lines, 9 chars
+</DELETE>
+</SUCCEEDED>
 ```
 
 最终结果：`obsolete.txt` 被删除。
@@ -393,12 +393,13 @@ content
 输出：
 
 ```text
-exit_code: 0
-stdout:
-Success. Updated the following files:
-M C:/work/example/new-name.txt (before: 1 lines, 8 chars; after: 1 lines, 8 chars)
-
-stderr:
+<SUCCEEDED>
+<EDIT>
+C:/work/example/new-name.txt
+before: 1 lines, 8 chars
+after: 1 lines, 8 chars
+</EDIT>
+</SUCCEEDED>
 ```
 
 最终结果：`old-name.txt` 被删除，`new-name.txt` 包含原内容。
@@ -428,12 +429,13 @@ old
 输出：
 
 ```text
-exit_code: 0
-stdout:
-Success. Updated the following files:
-M C:/work/example/new-name.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
-
-stderr:
+<SUCCEEDED>
+<EDIT>
+C:/work/example/new-name.txt
+before: 1 lines, 4 chars
+after: 1 lines, 4 chars
+</EDIT>
+</SUCCEEDED>
 ```
 
 最终文件：
@@ -474,14 +476,22 @@ b.txt 不存在
 输出：
 
 ```text
-exit_code: 0
-stdout:
-Success. Updated the following files:
-A C:/work/example/b.txt (before: 0 lines, 0 chars; after: 1 lines, 8 chars)
-M C:/work/example/a.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
-M C:/work/example/c.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
-
-stderr:
+<SUCCEEDED>
+<EDIT>
+C:/work/example/a.txt
+before: 1 lines, 4 chars
+after: 1 lines, 4 chars
+</EDIT>
+<ADD>
+C:/work/example/b.txt
+after: 1 lines, 8 chars
+</ADD>
+<EDIT>
+C:/work/example/c.txt
+before: 1 lines, 4 chars
+after: 1 lines, 4 chars
+</EDIT>
+</SUCCEEDED>
 ```
 
 最终文件：
@@ -524,15 +534,27 @@ c.txt: old
 输出：
 
 ```text
-exit_code: 1
-stdout:
-Updated the following files:
-M C:/work/example/a.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
-M C:/work/example/c.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
-
-stderr:
-Failed to find expected lines in C:/work/example/b.txt:
+<SUCCEEDED>
+<EDIT>
+C:/work/example/a.txt
+before: 1 lines, 4 chars
+after: 1 lines, 4 chars
+</EDIT>
+<EDIT>
+C:/work/example/c.txt
+before: 1 lines, 4 chars
+after: 1 lines, 4 chars
+</EDIT>
+</SUCCEEDED>
+<FAILED>
+<EDIT>
+C:/work/example/b.txt
+<REASON>
+Failed to find expected lines:
 missing
+</REASON>
+</EDIT>
+</FAILED>
 ```
 
 最终文件：
@@ -577,16 +599,29 @@ c.txt: kept
 输出：
 
 ```text
-exit_code: 1
-stdout:
-Updated the following files:
-M C:/work/example/b.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
-
-stderr:
-Failed to find expected lines in C:/work/example/a.txt:
+<SUCCEEDED>
+<EDIT>
+C:/work/example/b.txt
+before: 1 lines, 4 chars
+after: 1 lines, 4 chars
+</EDIT>
+</SUCCEEDED>
+<FAILED>
+<EDIT>
+C:/work/example/a.txt
+<REASON>
+Failed to find expected lines:
 missing-a
-Failed to find expected lines in C:/work/example/c.txt:
+</REASON>
+</EDIT>
+<EDIT>
+C:/work/example/c.txt
+<REASON>
+Failed to find expected lines:
 missing-c
+</REASON>
+</EDIT>
+</FAILED>
 ```
 
 最终文件：
@@ -610,10 +645,14 @@ c.txt: kept
 输出：
 
 ```text
+<FAILED>
+<REASON>
 patch must not be empty
+</REASON>
+</FAILED>
 ```
 
-说明：这个场景在 MCP 请求层直接失败，不会进入 patch runner，因此没有 `exit_code` 包装。
+说明：空输入由 patch runner 统一生成为标准失败结果。
 
 ## 15. patch 路径不是绝对路径
 
@@ -629,11 +668,11 @@ patch must not be empty
 输出：
 
 ```text
-exit_code: 1
-stdout:
-
-stderr:
+<FAILED>
+<REASON>
 Invalid patch hunk on line 2: patch paths must be absolute
+</REASON>
+</FAILED>
 ```
 
 说明：相对路径会在解析 patch 时失败，不会进行文件写入。
@@ -653,11 +692,11 @@ Invalid patch hunk on line 2: patch paths must be absolute
 输出：
 
 ```text
-exit_code: 1
-stdout:
-
-stderr:
+<FAILED>
+<REASON>
 Invalid patch: The first line of the patch must be '*** Begin Patch'
+</REASON>
+</FAILED>
 ```
 
 ## 17. patch 缺少 End 标记
@@ -675,11 +714,11 @@ Invalid patch: The first line of the patch must be '*** Begin Patch'
 输出：
 
 ```text
-exit_code: 1
-stdout:
-
-stderr:
+<FAILED>
+<REASON>
 Invalid patch: The last line of the patch must be '*** End Patch'
+</REASON>
+</FAILED>
 ```
 
 ## 18. patch 中没有文件操作
@@ -694,11 +733,11 @@ Invalid patch: The last line of the patch must be '*** End Patch'
 输出：
 
 ```text
-exit_code: 1
-stdout:
-
-stderr:
+<FAILED>
+<REASON>
 No files were modified.
+</REASON>
+</FAILED>
 ```
 
 ## 19. 未知文件操作标记
@@ -714,11 +753,11 @@ No files were modified.
 输出：
 
 ```text
-exit_code: 1
-stdout:
-
-stderr:
+<FAILED>
+<REASON>
 Invalid patch hunk on line 2: expected file operation marker
+</REASON>
+</FAILED>
 ```
 
 ## 20. Add File 内容行缺少 `+`
@@ -735,11 +774,11 @@ hello
 输出：
 
 ```text
-exit_code: 1
-stdout:
-
-stderr:
+<FAILED>
+<REASON>
 Invalid patch hunk on line 3: add file lines must start with '+'
+</REASON>
+</FAILED>
 ```
 
 ## 21. Update File 缺少变更块
@@ -755,11 +794,11 @@ Invalid patch hunk on line 3: add file lines must start with '+'
 输出：
 
 ```text
-exit_code: 1
-stdout:
-
-stderr:
+<FAILED>
+<REASON>
 Invalid patch hunk on line 2: update file hunk has no changes
+</REASON>
+</FAILED>
 ```
 
 说明：如果 `Update File` 后面带有 `*** Move to: ...`，则允许没有变更块，表示只重命名。
@@ -779,11 +818,11 @@ Invalid patch hunk on line 2: update file hunk has no changes
 输出：
 
 ```text
-exit_code: 1
-stdout:
-
-stderr:
+<FAILED>
+<REASON>
 Invalid patch hunk on line 3: expected '@@' change marker
+</REASON>
+</FAILED>
 ```
 
 ## 23. Update File 变更行缺少前缀
@@ -801,11 +840,11 @@ old
 输出：
 
 ```text
-exit_code: 1
-stdout:
-
-stderr:
+<FAILED>
+<REASON>
 Invalid patch hunk on line 4: expected change line prefix
+</REASON>
+</FAILED>
 ```
 
 ## 24. 更新的旧内容不匹配
@@ -832,13 +871,15 @@ actual
 输出：
 
 ```text
-exit_code: 1
-stdout:
-Updated the following files:
-
-stderr:
-Failed to find expected lines in C:/work/example/target.txt:
+<FAILED>
+<EDIT>
+C:/work/example/target.txt
+<REASON>
+Failed to find expected lines:
 expected
+</REASON>
+</EDIT>
+</FAILED>
 ```
 
 最终文件保持不变：
@@ -874,12 +915,14 @@ old
 输出：
 
 ```text
-exit_code: 1
-stdout:
-Updated the following files:
-
-stderr:
-Failed to find context 'missing-anchor' in C:/work/example/target.txt
+<FAILED>
+<EDIT>
+C:/work/example/target.txt
+<REASON>
+Failed to find context 'missing-anchor'
+</REASON>
+</EDIT>
+</FAILED>
 ```
 
 ## 26. 更新不存在的文件
@@ -898,12 +941,14 @@ Failed to find context 'missing-anchor' in C:/work/example/target.txt
 输出：
 
 ```text
-exit_code: 1
-stdout:
-Updated the following files:
-
-stderr:
-Failed to read file to update C:/work/example/missing.txt: 系统找不到指定的文件。 (os error 2)
+<FAILED>
+<EDIT>
+C:/work/example/missing.txt
+<REASON>
+Failed to read file to update: 系统找不到指定的文件。 (os error 2)
+</REASON>
+</EDIT>
+</FAILED>
 ```
 
 说明：系统错误文本会随操作系统语言而变化。
@@ -921,12 +966,14 @@ Failed to read file to update C:/work/example/missing.txt: 系统找不到指定
 输出：
 
 ```text
-exit_code: 1
-stdout:
-Updated the following files:
-
-stderr:
-Failed to delete file C:/work/example/missing.txt: 系统找不到指定的文件。 (os error 2)
+<FAILED>
+<DELETE>
+C:/work/example/missing.txt
+<REASON>
+Failed to delete file: 系统找不到指定的文件。 (os error 2)
+</REASON>
+</DELETE>
+</FAILED>
 ```
 
 说明：系统错误文本会随操作系统语言而变化。
@@ -950,12 +997,14 @@ target 是目录
 输出：
 
 ```text
-exit_code: 1
-stdout:
-Updated the following files:
-
-stderr:
-Failed to delete file C:/work/example/target: path is a directory
+<FAILED>
+<DELETE>
+C:/work/example/target
+<REASON>
+Failed to delete file: path is a directory
+</REASON>
+</DELETE>
+</FAILED>
 ```
 
 ## 29. heredoc 包装输入
@@ -976,12 +1025,13 @@ EOF
 输出：
 
 ```text
-exit_code: 0
-stdout:
-Success. Updated the following files:
-M C:/work/example/target.txt (before: 1 lines, 4 chars; after: 1 lines, 4 chars)
-
-stderr:
+<SUCCEEDED>
+<EDIT>
+C:/work/example/target.txt
+before: 1 lines, 4 chars
+after: 1 lines, 4 chars
+</EDIT>
+</SUCCEEDED>
 ```
 
 说明：外层 heredoc 包装会被识别并剥离。
@@ -1018,12 +1068,13 @@ target.txt
 输出：
 
 ```text
-exit_code: 0
-stdout:
-Success. Updated the following files:
-M target.txt (before: 1 lines, 9 chars; after: 1 lines, 4 chars)
-
-stderr:
+<SUCCEEDED>
+<EDIT>
+C:/work/example/target.txt
+before: 1 lines, 9 chars
+after: 1 lines, 4 chars
+</EDIT>
+</SUCCEEDED>
 ```
 
 最终文件：
@@ -1055,12 +1106,12 @@ PATCH_FILE=example.txt
 输出：
 
 ```text
-exit_code: 0
-stdout:
-Success. Updated the following files:
-A C:/work/example/docs/example.txt (before: 0 lines, 0 chars; after: 1 lines, 6 chars)
-
-stderr:
+<SUCCEEDED>
+<ADD>
+C:/work/example/docs/example.txt
+after: 1 lines, 6 chars
+</ADD>
+</SUCCEEDED>
 ```
 
 说明：路径支持 Unix 风格 `$VAR`、`${VAR}`，Windows 风格 `%VAR%`，以及位于路径开头的 `~`。
@@ -1079,9 +1130,9 @@ stderr:
 输出：
 
 ```text
-exit_code: 1
-stdout:
-
-stderr:
+<FAILED>
+<REASON>
 Invalid patch hunk on line 2: environment variable 'MISSING_FILE' is not set in path '$MISSING_FILE'
+</REASON>
+</FAILED>
 ```

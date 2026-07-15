@@ -31,16 +31,12 @@ impl Application {
         &self,
         Parameters(request): Parameters<ApplyPatchRequest>,
     ) -> Result<CallToolResult, McpError> {
-        if request.patch.trim().is_empty() {
-            return Ok(CallToolResult::error(vec![ContentBlock::text(
-                "patch must not be empty",
-            )]));
-        }
         let output = PatchRunner::apply(PatchExecution {
             patch: &request.patch,
         });
-        let content = vec![ContentBlock::text(output.render())];
-        if output.succeeded() {
+        let succeeded = output.succeeded();
+        let content = vec![ContentBlock::text(output.render().to_owned())];
+        if succeeded {
             Ok(CallToolResult::success(content))
         } else {
             Ok(CallToolResult::error(content))
@@ -110,6 +106,15 @@ mod tests {
         };
         assert_eq!(tool_result.is_error, Some(false));
         assert_eq!(fs::read_to_string(&target_path).unwrap(), "new\n");
+        let empty_arguments = rmcp::model::object(rmcp :: serde_json :: json ! ({ "patch" : "" }));
+        let empty_request = ClientRequest::CallToolRequest(Request::new(
+            CallToolRequestParams::new("apply_patch").with_arguments(empty_arguments),
+        ));
+        let empty_result = client.peer().send_request(empty_request).await.unwrap();
+        let rmcp::model::ServerResult::CallToolResult(empty_tool_result) = empty_result else {
+            panic!("expected call tool result");
+        };
+        assert_eq!(empty_tool_result.is_error, Some(true));
         client.cancel().await.unwrap();
         server_handle.await.unwrap().unwrap();
     }

@@ -1,7 +1,6 @@
 use crate::{parser::UpdateChunk, patch::summary::FileStats, seek_sequence};
 use replacements::{Replacement, apply_replacements};
 use smallvec::SmallVec;
-use std::path::Path;
 mod replacements;
 pub(crate) struct DerivedContents {
     pub(crate) contents: String,
@@ -10,12 +9,11 @@ pub(crate) struct DerivedContents {
     pub(crate) errors: Vec<String>,
 }
 pub(crate) fn derive_new_contents(
-    path: &Path,
     original_contents: &str,
     chunks: &[UpdateChunk],
 ) -> DerivedContents {
     let line_analysis = split_lines(original_contents);
-    let plan = compute_replacements(&line_analysis.lines, path, chunks);
+    let plan = compute_replacements(&line_analysis.lines, chunks);
     let contents = if plan.replacements.is_empty() {
         String::new()
     } else {
@@ -40,7 +38,6 @@ struct ReplacementPlan<'chunk> {
 }
 fn compute_replacements<'chunk>(
     original_lines: &[&str],
-    path: &Path,
     chunks: &'chunk [UpdateChunk],
 ) -> ReplacementPlan<'chunk> {
     let mut search_index = seek_sequence::LineSearchIndex::new(original_lines);
@@ -50,7 +47,7 @@ fn compute_replacements<'chunk>(
     let mut line_index = 0;
     for chunk in chunks {
         if let Some(context_line) = chunk.change_context.as_ref() {
-            match seek_context(&mut search_index, path, context_line, line_index) {
+            match seek_context(&mut search_index, context_line, line_index) {
                 Ok(index) => line_index = index,
                 Err(error) => {
                     errors.push(error.to_string());
@@ -58,7 +55,7 @@ fn compute_replacements<'chunk>(
                 }
             }
         }
-        match make_replacement(original_lines, &mut search_index, path, chunk, line_index) {
+        match make_replacement(original_lines, &mut search_index, chunk, line_index) {
             Ok((replacement, next_line_index)) => {
                 replacements.push(replacement);
                 line_index = next_line_index;
@@ -75,7 +72,6 @@ fn compute_replacements<'chunk>(
 }
 fn seek_context(
     search_index: &mut seek_sequence::LineSearchIndex<'_, '_>,
-    path: &Path,
     context_line: &String,
     line_index: usize,
 ) -> anyhow::Result<usize> {
@@ -84,16 +80,12 @@ fn seek_context(
     {
         Ok(sequence_match.start + sequence_match.length)
     } else {
-        anyhow::bail!(
-            "Failed to find context '{context_line}' in {}",
-            path.display()
-        );
+        anyhow::bail!("Failed to find context '{context_line}'");
     }
 }
 fn make_replacement<'chunk>(
     original_lines: &[&str],
     search_index: &mut seek_sequence::LineSearchIndex<'_, '_>,
-    path: &Path,
     chunk: &'chunk UpdateChunk,
     line_index: usize,
 ) -> anyhow::Result<(Replacement<'chunk>, usize)> {
@@ -129,8 +121,7 @@ fn make_replacement<'chunk>(
         ))
     } else {
         anyhow::bail!(
-            "Failed to find expected lines in {}:\n{}",
-            path.display(),
+            "Failed to find expected lines:\n{}",
             chunk.old_lines.join("\n")
         );
     }

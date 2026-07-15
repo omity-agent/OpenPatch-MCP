@@ -3,9 +3,8 @@ use crate::patch::{ApplyResult, apply_patch_text};
 pub struct PatchRunner;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PatchOutput {
-    pub status: Option<i32>,
-    pub stdout: String,
-    pub stderr: String,
+    succeeded: bool,
+    content: String,
 }
 #[derive(Debug, Copy, Clone)]
 pub struct PatchExecution<'request> {
@@ -13,37 +12,21 @@ pub struct PatchExecution<'request> {
 }
 impl PatchRunner {
     pub fn apply(request: PatchExecution<'_>) -> PatchOutput {
-        let ApplyResult { stdout, stderr } = apply_patch_text(request.patch);
-        let status = i32::from(!stderr.is_empty());
+        let ApplyResult { output, succeeded } = apply_patch_text(request.patch);
         PatchOutput {
-            status: Some(status),
-            stdout,
-            stderr,
+            succeeded,
+            content: output,
         }
     }
 }
 impl PatchOutput {
     #[must_use]
-    pub fn succeeded(&self) -> bool {
-        self.status == Some(0)
+    pub const fn succeeded(&self) -> bool {
+        self.succeeded
     }
     #[must_use]
-    pub fn render(&self) -> String {
-        let mut output = String::with_capacity(
-            "exit_code: \nstdout:\n\nstderr:\n".len() + self.stdout.len() + self.stderr.len() + 11,
-        );
-        output.push_str("exit_code: ");
-        if let Some(status) = self.status {
-            let mut buffer = itoa::Buffer::new();
-            output.push_str(buffer.format(status));
-        } else {
-            output.push_str("terminated by signal");
-        }
-        output.push_str("\nstdout:\n");
-        output.push_str(&self.stdout);
-        output.push_str("\nstderr:\n");
-        output.push_str(&self.stderr);
-        output
+    pub fn render(&self) -> &str {
+        &self.content
     }
 }
 #[cfg(test)]
