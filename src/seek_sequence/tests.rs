@@ -83,3 +83,62 @@ fn rare_middle_line_can_anchor_the_match() {
         })
     );
 }
+#[test]
+fn closest_match_uses_the_highest_levenshtein_similarity() {
+    let source = ["abzzef", "abcxef"];
+    let pattern = pattern(&["abcdef"]);
+    let index = LineSearchIndex::new(&source);
+    assert_eq!(
+        index.closest(&pattern),
+        Some(SequenceMatch {
+            start: 1,
+            length: 1
+        })
+    );
+}
+#[test]
+fn closest_match_finds_a_single_substitution() {
+    let source = ["one", "two", "three"];
+    let pattern = pattern(&["twx"]);
+    let index = LineSearchIndex::new(&source);
+    assert_eq!(
+        index.closest(&pattern),
+        Some(SequenceMatch {
+            start: 1,
+            length: 1
+        })
+    );
+}
+#[test]
+fn closest_match_can_span_a_different_number_of_lines() {
+    let source = ["alpha", "x", "beta"];
+    let pattern = pattern(&["alpha", "beta"]);
+    let index = LineSearchIndex::new(&source);
+    assert_eq!(
+        index.closest(&pattern),
+        Some(SequenceMatch {
+            start: 0,
+            length: 3
+        })
+    );
+}
+#[test]
+fn closest_match_compares_unicode_characters() {
+    let source = ["unrelated", "你好世畀"];
+    let pattern = pattern(&["你好世界"]);
+    let index = LineSearchIndex::new(&source);
+    assert_eq!(
+        index.closest(&pattern),
+        Some(SequenceMatch {
+            start: 1,
+            length: 1
+        })
+    );
+}
+#[test]
+fn closest_match_must_be_strictly_above_threshold() {
+    let source = ["abxy"];
+    let pattern = pattern(&["abcd"]);
+    let index = LineSearchIndex::new(&source);
+    assert_eq!(index.closest(&pattern), None);
+}

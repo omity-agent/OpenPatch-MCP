@@ -1,4 +1,5 @@
 use alloc::borrow::Cow;
+mod nearest;
 mod normalize;
 mod tier;
 use normalize::normalize;
@@ -38,6 +39,10 @@ impl<'slice, 'text> LineSearchIndex<'slice, 'text> {
             .or_else(|| self.find(pattern, start, eof, MatchMode::Normalized))
             .or_else(|| self.find(pattern, start, eof, MatchMode::IgnoreEmptyLines))
             .or_else(|| self.find(pattern, start, eof, MatchMode::CollapseSpaces))
+    }
+    #[must_use]
+    pub(crate) fn closest(&self, pattern: &[String]) -> Option<SequenceMatch> {
+        nearest::find(self.lines, pattern)
     }
     fn find(
         &mut self,

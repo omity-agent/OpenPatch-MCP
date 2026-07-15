@@ -47,7 +47,7 @@ fn compute_replacements<'chunk>(
     let mut line_index = 0;
     for chunk in chunks {
         if let Some(context_line) = chunk.change_context.as_ref() {
-            match seek_context(&mut search_index, context_line, line_index) {
+            match seek_context(original_lines, &mut search_index, context_line, line_index) {
                 Ok(index) => line_index = index,
                 Err(error) => {
                     errors.push(error.to_string());
@@ -71,6 +71,7 @@ fn compute_replacements<'chunk>(
     }
 }
 fn seek_context(
+    original_lines: &[&str],
     search_index: &mut seek_sequence::LineSearchIndex<'_, '_>,
     context_line: &String,
     line_index: usize,
@@ -80,7 +81,13 @@ fn seek_context(
     {
         Ok(sequence_match.start + sequence_match.length)
     } else {
-        anyhow::bail!("Failed to find context '{context_line}'");
+        let pattern = core::slice::from_ref(context_line);
+        anyhow::bail!(match_failure_reason(
+            "Failed to find context",
+            original_lines,
+            search_index,
+            pattern,
+        ));
     }
 }
 fn make_replacement<'chunk>(
@@ -120,11 +127,35 @@ fn make_replacement<'chunk>(
             sequence_match.start + sequence_match.length,
         ))
     } else {
-        anyhow::bail!(
-            "Failed to find expected lines:\n{}",
-            chunk.old_lines.join("\n")
-        );
+        anyhow::bail!(match_failure_reason(
+            "Failed to find expected lines",
+            original_lines,
+            search_index,
+            pattern,
+        ));
     }
+}
+fn match_failure_reason(
+    message: &str,
+    original_lines: &[&str],
+    search_index: &seek_sequence::LineSearchIndex<'_, '_>,
+    pattern: &[String],
+) -> String {
+    let Some(closest) = search_index.closest(pattern) else {
+        return message.to_owned();
+    };
+    let Some(end) = closest.start.checked_add(closest.length) else {
+        panic!("closest match range must be valid");
+    };
+    let Some(lines) = original_lines.get(closest.start..end) else {
+        panic!("closest match range must reference original lines");
+    };
+    let target_fragment = lines
+        .iter()
+        .map(|line| line.trim_end_matches('\r'))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!("{message}. Closest match:\n{target_fragment}")
 }
 struct LineAnalysis<'content> {
     lines: Vec<&'content str>,

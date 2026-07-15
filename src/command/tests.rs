@@ -43,7 +43,7 @@ fn failed_update_does_not_stop_following_files() {
         "+new",
         &format!("*** Update File: {}", second_path.display()),
         "@@",
-        "-missing",
+        "-kepx",
         "+changed",
         &format!("*** Update File: {}", third_path.display()),
         "@@",
@@ -64,7 +64,7 @@ fn failed_update_does_not_stop_following_files() {
     assert!(
         output
             .render()
-            .contains("Failed to find expected lines:\nmissing")
+            .contains("Failed to find expected lines. Closest match:\nkept")
     );
 }
 #[test]

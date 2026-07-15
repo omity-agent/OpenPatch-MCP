@@ -12,7 +12,7 @@ fn failed_chunk_is_reported_beside_successful_edit() {
         "-one",
         "+1",
         "@@",
-        "-missing",
+        "-twx",
         "+changed",
         "@@",
         "-three",
@@ -26,7 +26,7 @@ fn failed_chunk_is_reported_beside_successful_edit() {
     assert_eq!(
         result.output,
         format!(
-            "<SUCCEEDED>\n<EDIT>\n{}\nbefore: 3 lines, 14 chars\nafter: 3 lines, 8 chars\n</EDIT>\n</SUCCEEDED>\n<FAILED>\n<EDIT>\n{}\n<REASON>\nFailed to find expected lines:\nmissing\n</REASON>\n</EDIT>\n</FAILED>",
+            "<SUCCEEDED>\n<EDIT>\n{}\nbefore: 3 lines, 14 chars\nafter: 3 lines, 8 chars\n</EDIT>\n</SUCCEEDED>\n<FAILED>\n<EDIT>\n{}\n<REASON>\nFailed to find expected lines. Closest match:\ntwo\n</REASON>\n</EDIT>\n</FAILED>",
             target_path.display(),
             target_path.display()
         )
@@ -90,12 +90,12 @@ fn empty_patch_uses_the_standard_failure_format() {
 fn failure_reason_is_not_escaped() {
     let directory = tempfile::tempdir().unwrap();
     let target_path = directory.path().join("target.txt");
-    fs::write(&target_path, "actual\n").unwrap();
+    fs::write(&target_path, "<actual>&\n").unwrap();
     let patch = [
         "*** Begin Patch",
         &format!("*** Update File: {}", target_path.display()),
         "@@",
-        "-<expected>&",
+        "-<actuel>&",
         "+new",
         "*** End Patch",
     ]
@@ -105,7 +105,49 @@ fn failure_reason_is_not_escaped() {
     assert!(
         result
             .output
-            .contains("Failed to find expected lines:\n<expected>&")
+            .contains("Failed to find expected lines. Closest match:\n<actual>&")
+    );
+}
+#[test]
+fn failed_match_omits_candidates_at_or_below_threshold() {
+    let directory = tempfile::tempdir().unwrap();
+    let target_path = directory.path().join("target.txt");
+    fs::write(&target_path, "abxy\n").unwrap();
+    let patch = [
+        "*** Begin Patch",
+        &format!("*** Update File: {}", target_path.display()),
+        "@@",
+        "-abcd",
+        "+new",
+        "*** End Patch",
+    ]
+    .join("\n");
+    let result = apply_patch_text(&patch);
+    assert!(!result.succeeded);
+    assert!(result.output.contains("Failed to find expected lines\n"));
+    assert!(!result.output.contains("Closest match"));
+    assert!(!result.output.contains("abcd"));
+}
+#[test]
+fn failed_context_reports_the_closest_target_fragment() {
+    let directory = tempfile::tempdir().unwrap();
+    let target_path = directory.path().join("target.txt");
+    fs::write(&target_path, "anchor-old\nvalue\n").unwrap();
+    let patch = [
+        "*** Begin Patch",
+        &format!("*** Update File: {}", target_path.display()),
+        "@@ anchor-new",
+        "-value",
+        "+changed",
+        "*** End Patch",
+    ]
+    .join("\n");
+    let result = apply_patch_text(&patch);
+    assert!(!result.succeeded);
+    assert!(
+        result
+            .output
+            .contains("Failed to find context. Closest match:\nanchor-old")
     );
 }
 #[test]

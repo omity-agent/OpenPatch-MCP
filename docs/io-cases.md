@@ -260,7 +260,7 @@ three
 -one
 +1
 @@
--missing
+-twx
 +changed
 @@
 -three
@@ -282,8 +282,8 @@ after: 3 lines, 8 chars
 <EDIT>
 C:/work/example/target.txt
 <REASON>
-Failed to find expected lines:
-missing
+Failed to find expected lines. Closest match:
+two
 </REASON>
 </EDIT>
 </FAILED>
@@ -522,7 +522,7 @@ c.txt: old
 +new
 *** Update File: C:/work/example/b.txt
 @@
--missing
+-kepx
 +changed
 *** Update File: C:/work/example/c.txt
 @@
@@ -550,8 +550,8 @@ after: 1 lines, 4 chars
 <EDIT>
 C:/work/example/b.txt
 <REASON>
-Failed to find expected lines:
-missing
+Failed to find expected lines. Closest match:
+kept
 </REASON>
 </EDIT>
 </FAILED>
@@ -610,15 +610,13 @@ after: 1 lines, 4 chars
 <EDIT>
 C:/work/example/a.txt
 <REASON>
-Failed to find expected lines:
-missing-a
+Failed to find expected lines
 </REASON>
 </EDIT>
 <EDIT>
 C:/work/example/c.txt
 <REASON>
-Failed to find expected lines:
-missing-c
+Failed to find expected lines
 </REASON>
 </EDIT>
 </FAILED>
@@ -863,7 +861,7 @@ actual
 *** Begin Patch
 *** Update File: C:/work/example/target.txt
 @@
--expected
+-actuel
 +new
 *** End Patch
 ```
@@ -875,8 +873,8 @@ actual
 <EDIT>
 C:/work/example/target.txt
 <REASON>
-Failed to find expected lines:
-expected
+Failed to find expected lines. Closest match:
+actual
 </REASON>
 </EDIT>
 </FAILED>
@@ -906,7 +904,7 @@ old
 ```text
 *** Begin Patch
 *** Update File: C:/work/example/target.txt
-@@ missing-anchor
+@@ alphx
 -old
 +new
 *** End Patch
@@ -919,7 +917,8 @@ old
 <EDIT>
 C:/work/example/target.txt
 <REASON>
-Failed to find context 'missing-anchor'
+Failed to find context. Closest match:
+alpha
 </REASON>
 </EDIT>
 </FAILED>
