@@ -270,7 +270,7 @@ three
 
 输出：
 
-```text
+````text
 <SUCCEEDED>
 <EDIT>
 C:/work/example/target.txt
@@ -283,11 +283,13 @@ after: 3 lines, 8 chars
 C:/work/example/target.txt
 <REASON>
 Failed to find expected lines. Closest match:
+```
 two
+```
 </REASON>
 </EDIT>
 </FAILED>
-```
+````
 
 最终文件：
 
@@ -533,7 +535,7 @@ c.txt: old
 
 输出：
 
-```text
+````text
 <SUCCEEDED>
 <EDIT>
 C:/work/example/a.txt
@@ -551,11 +553,13 @@ after: 1 lines, 4 chars
 C:/work/example/b.txt
 <REASON>
 Failed to find expected lines. Closest match:
+```
 kept
+```
 </REASON>
 </EDIT>
 </FAILED>
-```
+````
 
 最终文件：
 
@@ -868,17 +872,19 @@ actual
 
 输出：
 
-```text
+````text
 <FAILED>
 <EDIT>
 C:/work/example/target.txt
 <REASON>
 Failed to find expected lines. Closest match:
+```
 actual
+```
 </REASON>
 </EDIT>
 </FAILED>
-```
+````
 
 最终文件保持不变：
 
@@ -912,17 +918,19 @@ old
 
 输出：
 
-```text
+````text
 <FAILED>
 <EDIT>
 C:/work/example/target.txt
 <REASON>
 Failed to find context. Closest match:
+```
 alpha
+```
 </REASON>
 </EDIT>
 </FAILED>
-```
+````
 
 ## 26. 更新不存在的文件
 

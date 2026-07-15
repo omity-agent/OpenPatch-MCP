@@ -64,7 +64,7 @@ fn failed_update_does_not_stop_following_files() {
     assert!(
         output
             .render()
-            .contains("Failed to find expected lines. Closest match:\nkept")
+            .contains("Failed to find expected lines. Closest match:\n```\nkept\n```")
     );
 }
 #[test]

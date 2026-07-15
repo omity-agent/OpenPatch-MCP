@@ -1,6 +1,8 @@
 use crate::{parser::UpdateChunk, patch::summary::FileStats, seek_sequence};
+use diagnostic::match_failure_reason;
 use replacements::{Replacement, apply_replacements};
 use smallvec::SmallVec;
+mod diagnostic;
 mod replacements;
 pub(crate) struct DerivedContents {
     pub(crate) contents: String,
@@ -134,28 +136,6 @@ fn make_replacement<'chunk>(
             pattern,
         ));
     }
-}
-fn match_failure_reason(
-    message: &str,
-    original_lines: &[&str],
-    search_index: &seek_sequence::LineSearchIndex<'_, '_>,
-    pattern: &[String],
-) -> String {
-    let Some(closest) = search_index.closest(pattern) else {
-        return message.to_owned();
-    };
-    let Some(end) = closest.start.checked_add(closest.length) else {
-        panic!("closest match range must be valid");
-    };
-    let Some(lines) = original_lines.get(closest.start..end) else {
-        panic!("closest match range must reference original lines");
-    };
-    let target_fragment = lines
-        .iter()
-        .map(|line| line.trim_end_matches('\r'))
-        .collect::<Vec<_>>()
-        .join("\n");
-    format!("{message}. Closest match:\n{target_fragment}")
 }
 struct LineAnalysis<'content> {
     lines: Vec<&'content str>,

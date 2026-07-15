@@ -84,7 +84,7 @@ fn rare_middle_line_can_anchor_the_match() {
     );
 }
 #[test]
-fn closest_match_uses_the_highest_levenshtein_similarity() {
+fn closest_match_uses_the_highest_affine_alignment_score() {
     let source = ["abzzef", "abcxef"];
     let pattern = pattern(&["abcdef"]);
     let index = LineSearchIndex::new(&source);

@@ -26,7 +26,7 @@ fn failed_chunk_is_reported_beside_successful_edit() {
     assert_eq!(
         result.output,
         format!(
-            "<SUCCEEDED>\n<EDIT>\n{}\nbefore: 3 lines, 14 chars\nafter: 3 lines, 8 chars\n</EDIT>\n</SUCCEEDED>\n<FAILED>\n<EDIT>\n{}\n<REASON>\nFailed to find expected lines. Closest match:\ntwo\n</REASON>\n</EDIT>\n</FAILED>",
+            "<SUCCEEDED>\n<EDIT>\n{}\nbefore: 3 lines, 14 chars\nafter: 3 lines, 8 chars\n</EDIT>\n</SUCCEEDED>\n<FAILED>\n<EDIT>\n{}\n<REASON>\nFailed to find expected lines. Closest match:\n```\ntwo\n```\n</REASON>\n</EDIT>\n</FAILED>",
             target_path.display(),
             target_path.display()
         )
@@ -105,7 +105,7 @@ fn failure_reason_is_not_escaped() {
     assert!(
         result
             .output
-            .contains("Failed to find expected lines. Closest match:\n<actual>&")
+            .contains("Failed to find expected lines. Closest match:\n```\n<actual>&\n```")
     );
 }
 #[test]
@@ -147,7 +147,7 @@ fn failed_context_reports_the_closest_target_fragment() {
     assert!(
         result
             .output
-            .contains("Failed to find context. Closest match:\nanchor-old")
+            .contains("Failed to find context. Closest match:\n```\nanchor-old\n```")
     );
 }
 #[test]
