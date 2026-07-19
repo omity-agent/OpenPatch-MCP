@@ -5,7 +5,7 @@ pub(crate) mod model;
 mod output;
 mod store;
 mod undo;
-pub(crate) use output::OperationOutput;
+pub(crate) use output::{OperationOutput, PatchToolOutput};
 use store::HistoryStore;
 #[derive(Debug, Clone)]
 pub(crate) struct OperationService {

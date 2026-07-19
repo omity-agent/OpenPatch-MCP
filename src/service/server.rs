@@ -35,10 +35,7 @@ impl Application {
             runner: PatchRunner::open(path)?,
         })
     }
-    #[tool(
-        name = "apply_patch",
-        description = "The `apply_patch` tool can be used to edit files. Each patch will be assigned a UUID. This is a FREEFORM tool, so do not wrap the patch in JSON."
-    )]
+    # [tool (name = "apply_patch" , description = "The `apply_patch` tool can be used to edit files. Each patch will be assigned a UUID. This is a FREEFORM tool, so do not wrap the patch in JSON." , output_schema = rmcp :: handler :: server :: tool :: schema_for_type ::< crate :: operation :: PatchToolOutput > ())]
     async fn apply_patch(
         &self,
         Parameters(request): Parameters<ApplyPatchRequest>,
@@ -48,10 +45,7 @@ impl Application {
         });
         Ok(to_tool_result(&output))
     }
-    #[tool(
-        name = "undo_patch",
-        description = "Undo recorded patch operations. When you want to undo changes, always use the `undo_patch` tool instead of manually rewriting them. The tool is more efficient and ensures that the undoed content are exactly the same as the original."
-    )]
+    # [tool (name = "undo_patch" , description = "Undo recorded patch operations. When you want to undo changes, always use the `undo_patch` tool instead of manually rewriting them. The tool is more efficient and ensures that the undoed content are exactly the same as the original." , output_schema = rmcp :: handler :: server :: tool :: schema_for_type ::< crate :: operation :: PatchToolOutput > ())]
     async fn undo_patch(
         &self,
         Parameters(request): Parameters<UndoPatchRequest>,
@@ -102,6 +96,9 @@ mod tests {
         fs::write(&target_path, "old\n").unwrap();
         let database_path = directory.path().join("history.sqlite3");
         let application = Application::with_database(&database_path).unwrap();
+        let tools = application.tool_router.list_all();
+        assert_eq!(tools.len(), 2);
+        assert!(tools.iter().all(|tool| tool.output_schema.is_some()));
         let (server_transport, client_transport) = tokio::io::duplex(8192);
         let server_handle = tokio::spawn(async move {
             let service = ServiceExt::serve(application, server_transport).await?;

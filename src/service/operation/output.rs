@@ -2,6 +2,7 @@ mod structured;
 use super::model::{OperationId, OperationKind};
 use core::fmt::Write as _;
 use std::path::{Path, PathBuf};
+pub(crate) use structured::PatchToolOutput;
 #[derive(Debug, Default)]
 pub(crate) struct OperationOutput {
     successes: Vec<Success>,
