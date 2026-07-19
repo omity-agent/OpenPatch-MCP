@@ -8,10 +8,42 @@ pub(crate) fn snapshot(path: &Path, action: &str) -> anyhow::Result<FileState> {
     }
 }
 pub(super) fn apply(mutation: &Mutation) -> anyhow::Result<()> {
-    verify_before(mutation)?;
-    for (index, change) in mutation.changes.iter().enumerate() {
+    let states = mutation
+        .changes
+        .iter()
+        .map(|change| &change.before)
+        .collect::<Vec<_>>();
+    apply_from(mutation, &states)
+}
+pub(super) fn apply_observed(mutation: &Mutation, observed: &[FileState]) -> anyhow::Result<()> {
+    ensure_state_count(mutation, observed)?;
+    let states = observed.iter().collect::<Vec<_>>();
+    apply_from(mutation, &states)
+}
+pub(super) fn roll_back(mutation: &Mutation) -> anyhow::Result<()> {
+    let states = mutation
+        .changes
+        .iter()
+        .map(|change| &change.before)
+        .collect::<Vec<_>>();
+    restore_states(mutation, &states, mutation.changes.len())
+}
+pub(super) fn roll_back_observed(
+    mutation: &Mutation,
+    observed: &[FileState],
+) -> anyhow::Result<()> {
+    ensure_state_count(mutation, observed)?;
+    let states = observed.iter().collect::<Vec<_>>();
+    restore_states(mutation, &states, mutation.changes.len())
+}
+fn apply_from(mutation: &Mutation, states: &[&FileState]) -> anyhow::Result<()> {
+    verify_states(mutation, states)?;
+    for (index, (change, original)) in mutation.changes.iter().zip(states).enumerate() {
+        if **original == change.after {
+            continue;
+        }
         if let Err(error) = write_state(&change.path, &change.after) {
-            let rollback_result = restore_before(mutation, index);
+            let rollback_result = restore_states(mutation, states, index + 1);
             return match rollback_result {
                 Ok(()) => Err(error),
                 Err(rollback_error) => Err(anyhow::anyhow!(
@@ -22,13 +54,13 @@ pub(super) fn apply(mutation: &Mutation) -> anyhow::Result<()> {
     }
     Ok(())
 }
-pub(super) fn roll_back(mutation: &Mutation) -> anyhow::Result<()> {
-    restore_before(mutation, mutation.changes.len().saturating_sub(1))
-}
-fn verify_before(mutation: &Mutation) -> anyhow::Result<()> {
-    for change in &mutation.changes {
+fn verify_states(mutation: &Mutation, states: &[&FileState]) -> anyhow::Result<()> {
+    if mutation.changes.len() != states.len() {
+        anyhow::bail!("file operation state count does not match its path count");
+    }
+    for (change, expected) in mutation.changes.iter().zip(states) {
         let current = snapshot(&change.path, "Failed to verify file before writing")?;
-        if current != change.before {
+        if &current != *expected {
             anyhow::bail!(
                 "file changed concurrently before operation could be committed: {}",
                 change.path.display()
@@ -37,15 +69,17 @@ fn verify_before(mutation: &Mutation) -> anyhow::Result<()> {
     }
     Ok(())
 }
-fn restore_before(mutation: &Mutation, last_index: usize) -> anyhow::Result<()> {
+fn restore_states(
+    mutation: &Mutation,
+    states: &[&FileState],
+    change_count: usize,
+) -> anyhow::Result<()> {
     let mut errors = Vec::new();
-    for change in mutation
-        .changes
-        .iter()
-        .take(last_index.saturating_add(1))
-        .rev()
-    {
-        if let Err(error) = write_state(&change.path, &change.before) {
+    for (change, original) in mutation.changes.iter().zip(states).take(change_count).rev() {
+        if **original == change.after {
+            continue;
+        }
+        if let Err(error) = write_state(&change.path, original) {
             errors.push(format!("{}: {error}", change.path.display()));
         }
     }
@@ -54,6 +88,12 @@ fn restore_before(mutation: &Mutation, last_index: usize) -> anyhow::Result<()> 
     } else {
         anyhow::bail!(errors.join("; "));
     }
+}
+fn ensure_state_count(mutation: &Mutation, states: &[FileState]) -> anyhow::Result<()> {
+    if mutation.changes.len() != states.len() {
+        anyhow::bail!("file operation state count does not match its path count");
+    }
+    Ok(())
 }
 fn write_state(path: &Path, state: &FileState) -> anyhow::Result<()> {
     state

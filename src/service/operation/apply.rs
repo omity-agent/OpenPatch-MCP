@@ -58,9 +58,9 @@ fn commit_hunk(
     };
     let uuid = service.history.insert(&transaction, &mutation, None)?;
     service.history.prune(&transaction)?;
-    files::apply(&mutation)?;
+    files::apply_observed(&mutation, &planned.observed)?;
     if let Err(error) = transaction.commit() {
-        let rollback = files::roll_back(&mutation);
+        let rollback = files::roll_back_observed(&mutation, &planned.observed);
         return match rollback {
             Ok(()) => Err(error.into()),
             Err(rollback_error) => Err(anyhow::anyhow!(
@@ -99,4 +99,50 @@ pub(super) fn logical_stats(mutation: &Mutation) -> (Option<FileStats>, Option<F
         .and_then(|change| change.after.contents())
         .map(|contents| FileStats::from_contents(contents));
     (before, after)
+}
+#[cfg(test)]
+mod tests {
+    use super::OperationService;
+    use std::fs;
+    #[test]
+    fn already_applied_update_can_be_undone_to_patch_before_contents() {
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("target.txt");
+        fs::write(&target, "new\n").unwrap();
+        let service = OperationService::open(&directory.path().join("history.sqlite3")).unwrap();
+        let patch = format!(
+            "*** Begin Patch\n*** Update File: {}\n@@\n-old from patch\n+new\n*** End Patch",
+            target.display()
+        );
+        let applied = service.apply(&patch);
+        assert!(applied.succeeded(), "{}", applied.render());
+        assert_eq!(fs::read_to_string(&target).unwrap(), "new\n");
+        let rendered = applied.render();
+        let (_, uuid_suffix) = rendered.split_once("<UUID>\n").unwrap();
+        let (uuid, _) = uuid_suffix.split_once("\n</UUID>").unwrap();
+        let undone = service.undo(&[uuid.to_owned()]);
+        assert!(undone.succeeded(), "{}", undone.render());
+        assert_eq!(fs::read_to_string(target).unwrap(), "old from patch\n");
+    }
+    #[test]
+    fn already_applied_add_can_be_undone_to_a_missing_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("target.txt");
+        fs::write(&target, "added\n").unwrap();
+        let service = OperationService::open(&directory.path().join("history.sqlite3")).unwrap();
+        let patch = format!(
+            "*** Begin Patch\n*** Add File: {}\n+added\n*** End Patch",
+            target.display()
+        );
+        let applied = service.apply(&patch);
+        assert!(applied.succeeded(), "{}", applied.render());
+        assert_eq!(fs::read_to_string(&target).unwrap(), "added\n");
+        let rendered = applied.render();
+        let (_, uuid_suffix) = rendered.split_once("<UUID>\n").unwrap();
+        let (uuid, _) = uuid_suffix.split_once("\n</UUID>").unwrap();
+        let undone = service.undo(&[uuid.to_owned()]);
+        assert!(undone.succeeded(), "{}", undone.render());
+        assert!(!target.exists());
+        assert!(undone.render().contains("<DELETE>"));
+    }
 }

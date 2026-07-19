@@ -41,6 +41,15 @@ impl<'slice, 'text> LineSearchIndex<'slice, 'text> {
             .or_else(|| self.find(pattern, start, eof, MatchMode::CollapseSpaces))
     }
     #[must_use]
+    pub(crate) fn seek_exact(
+        &self,
+        pattern: &[String],
+        start: usize,
+        eof: bool,
+    ) -> Option<SequenceMatch> {
+        find_exact(self.lines, pattern, start, eof)
+    }
+    #[must_use]
     pub(crate) fn closest(&self, pattern: &[String]) -> Option<SequenceMatch> {
         nearest::find(self.lines, pattern)
     }

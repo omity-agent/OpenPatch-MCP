@@ -1,10 +1,11 @@
 use crate::{parser::UpdateChunk, seek_sequence};
-use diagnostic::match_failure_reason;
 use replacements::{Replacement, apply_replacements};
 use smallvec::SmallVec;
 mod diagnostic;
+mod matching;
 mod replacements;
 pub(crate) struct DerivedContents {
+    pub(crate) before_contents: String,
     pub(crate) contents: String,
     pub(crate) applied_chunks: usize,
     pub(crate) errors: Vec<String>,
@@ -15,24 +16,26 @@ pub(crate) fn derive_new_contents(
 ) -> DerivedContents {
     let line_analysis = split_lines(original_contents);
     let plan = compute_replacements(&line_analysis.lines, chunks);
-    let contents = if plan.replacements.is_empty() {
-        String::new()
-    } else {
-        apply_replacements(
-            original_contents,
-            &line_analysis.lines,
-            &line_analysis.offsets,
-            &plan.replacements,
-        )
-    };
+    let before_contents = render_contents(
+        original_contents,
+        &line_analysis,
+        &plan.reverse_replacements,
+    );
+    let contents = render_contents(
+        original_contents,
+        &line_analysis,
+        &plan.forward_replacements,
+    );
     DerivedContents {
+        before_contents,
         contents,
         applied_chunks: plan.applied_chunks,
         errors: plan.errors,
     }
 }
 struct ReplacementPlan<'chunk> {
-    replacements: SmallVec<[Replacement<'chunk>; 4]>,
+    forward_replacements: SmallVec<[Replacement<'chunk>; 4]>,
+    reverse_replacements: SmallVec<[Replacement<'chunk>; 4]>,
     applied_chunks: usize,
     errors: Vec<String>,
 }
@@ -41,99 +44,56 @@ fn compute_replacements<'chunk>(
     chunks: &'chunk [UpdateChunk],
 ) -> ReplacementPlan<'chunk> {
     let mut search_index = seek_sequence::LineSearchIndex::new(original_lines);
-    let mut replacements = SmallVec::with_capacity(chunks.len());
+    let mut forward_replacements = SmallVec::with_capacity(chunks.len());
+    let mut reverse_replacements = SmallVec::with_capacity(chunks.len());
     let mut errors = Vec::new();
     let mut applied_chunks = 0;
     let mut line_index = 0;
-    for chunk in chunks {
-        if let Some(context_line) = chunk.change_context.as_ref() {
-            match seek_context(original_lines, &mut search_index, context_line, line_index) {
-                Ok(index) => line_index = index,
-                Err(error) => {
-                    errors.push(error.to_string());
-                    continue;
+    for (index, chunk) in chunks.iter().enumerate() {
+        let Some(remaining_chunks) = chunks.get(index..) else {
+            panic!("chunk index must be in bounds");
+        };
+        match matching::plan_chunk(
+            original_lines,
+            &mut search_index,
+            chunk,
+            remaining_chunks,
+            line_index,
+        ) {
+            Ok(chunk_plan) => {
+                if let Some(replacement) = chunk_plan.forward {
+                    forward_replacements.push(replacement);
                 }
-            }
-        }
-        match make_replacement(original_lines, &mut search_index, chunk, line_index) {
-            Ok((replacement, next_line_index)) => {
-                replacements.push(replacement);
-                line_index = next_line_index;
+                if let Some(replacement) = chunk_plan.reverse {
+                    reverse_replacements.push(replacement);
+                }
+                line_index = chunk_plan.next_line_index;
                 applied_chunks += 1;
             }
             Err(error) => errors.push(error.to_string()),
         }
     }
     ReplacementPlan {
-        replacements,
+        forward_replacements,
+        reverse_replacements,
         applied_chunks,
         errors,
     }
 }
-fn seek_context(
-    original_lines: &[&str],
-    search_index: &mut seek_sequence::LineSearchIndex<'_, '_>,
-    context_line: &String,
-    line_index: usize,
-) -> anyhow::Result<usize> {
-    if let Some(sequence_match) =
-        search_index.seek(core::slice::from_ref(context_line), line_index, false)
-    {
-        Ok(sequence_match.start + sequence_match.length)
-    } else {
-        let pattern = core::slice::from_ref(context_line);
-        anyhow::bail!(match_failure_reason(
-            "Failed to find context",
-            original_lines,
-            search_index,
-            pattern,
-        ));
+fn render_contents(
+    original_contents: &str,
+    line_analysis: &LineAnalysis<'_>,
+    replacements: &[Replacement<'_>],
+) -> String {
+    if replacements.is_empty() {
+        return original_contents.to_owned();
     }
-}
-fn make_replacement<'chunk>(
-    original_lines: &[&str],
-    search_index: &mut seek_sequence::LineSearchIndex<'_, '_>,
-    chunk: &'chunk UpdateChunk,
-    line_index: usize,
-) -> anyhow::Result<(Replacement<'chunk>, usize)> {
-    if chunk.old_lines.is_empty() {
-        let insertion_index = if original_lines.last().is_some_and(|line| line.is_empty()) {
-            original_lines.len() - 1
-        } else {
-            original_lines.len()
-        };
-        return Ok((
-            (insertion_index, 0, chunk.new_lines.as_slice()),
-            insertion_index,
-        ));
-    }
-    let mut pattern = chunk.old_lines.as_slice();
-    let mut new_slice = chunk.new_lines.as_slice();
-    let mut found = search_index.seek(pattern, line_index, chunk.is_end_of_file);
-    if found.is_none() && pattern.last().is_some_and(String::is_empty) {
-        if let Some((_, prefix)) = pattern.split_last() {
-            pattern = prefix;
-        }
-        if new_slice.last().is_some_and(String::is_empty)
-            && let Some((_, prefix)) = new_slice.split_last()
-        {
-            new_slice = prefix;
-        }
-        found = search_index.seek(pattern, line_index, chunk.is_end_of_file);
-    }
-    if let Some(sequence_match) = found {
-        Ok((
-            (sequence_match.start, sequence_match.length, new_slice),
-            sequence_match.start + sequence_match.length,
-        ))
-    } else {
-        anyhow::bail!(match_failure_reason(
-            "Failed to find expected lines",
-            original_lines,
-            search_index,
-            pattern,
-        ));
-    }
+    apply_replacements(
+        original_contents,
+        &line_analysis.lines,
+        &line_analysis.offsets,
+        replacements,
+    )
 }
 struct LineAnalysis<'content> {
     lines: Vec<&'content str>,

@@ -71,6 +71,15 @@ fn start_index_excludes_earlier_candidates() {
     assert_eq!(seek_sequence(&source, &pattern, 1, false), Some(2));
 }
 #[test]
+fn exact_search_does_not_accept_a_trimmed_match() {
+    let lines = [" target "];
+    let pattern = pattern(&["target"]);
+    assert_eq!(
+        LineSearchIndex::new(&lines).seek_exact(&pattern, 0, false),
+        None
+    );
+}
+#[test]
 fn rare_middle_line_can_anchor_the_match() {
     let source = ["same", "same", "same", "unique", "same", "same"];
     let pattern = pattern(&["same", "unique", "same"]);

@@ -1,5 +1,6 @@
 use super::{derive_new_contents, replacements::Replacement, replacements::apply_replacements};
 use crate::parser::UpdateChunk;
+mod idempotence;
 #[test]
 fn insertion_without_old_lines_precedes_logical_trailing_empty_line() {
     let chunk = UpdateChunk {
