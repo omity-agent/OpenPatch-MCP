@@ -147,7 +147,7 @@ fn history_retention_uses_only_the_latest_thousand_records() {
     let count: i64 = transaction
         .query_row("SELECT COUNT(*) FROM operations", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(count, 100);
+    assert_eq!(count, 1000);
     transaction.commit().unwrap();
 }
 #[test]

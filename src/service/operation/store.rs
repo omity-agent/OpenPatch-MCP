@@ -5,7 +5,7 @@ use directories::ProjectDirs;
 use rusqlite::{Connection, OptionalExtension as _, Transaction, params};
 use std::path::{Path, PathBuf};
 type SqlTransaction<'connection> = Transaction<'connection>;
-const RETAINED_OPERATIONS: i64 = 100;
+const RETAINED_OPERATIONS: i64 = 1000;
 const SCHEMA: &str = "CREATE TABLE IF NOT EXISTS operations (sequence INTEGER PRIMARY KEY, uuid BLOB NOT NULL UNIQUE CHECK(length(uuid)=16), kind INTEGER NOT NULL CHECK(kind BETWEEN 0 AND 2), display_path BLOB NOT NULL, undo_of BLOB CHECK(undo_of IS NULL OR length(undo_of)=16), undone_by BLOB CHECK(undone_by IS NULL OR length(undone_by)=16)); CREATE UNIQUE INDEX IF NOT EXISTS operations_undo_of ON operations(undo_of) WHERE undo_of IS NOT NULL; CREATE TABLE IF NOT EXISTS operation_files (operation_uuid BLOB NOT NULL REFERENCES operations(uuid) ON DELETE CASCADE, ordinal INTEGER NOT NULL, role INTEGER NOT NULL CHECK(role BETWEEN 0 AND 2), path BLOB NOT NULL, before_present INTEGER NOT NULL, before_contents TEXT, after_present INTEGER NOT NULL, after_contents TEXT, PRIMARY KEY(operation_uuid, ordinal), CHECK((before_present=0 AND before_contents IS NULL) OR (before_present=1 AND before_contents IS NOT NULL)), CHECK((after_present=0 AND after_contents IS NULL) OR (after_present=1 AND after_contents IS NOT NULL)));";
 #[derive(Debug, Clone)]
 pub(super) struct HistoryStore {
