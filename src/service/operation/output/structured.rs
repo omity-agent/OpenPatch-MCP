@@ -1,5 +1,5 @@
 use super::{Failure, FileStats, OperationKind, OperationOutput, Success};
-use rmcp::schemars::JsonSchema;
+use rmcp::schemars::{JsonSchema, Schema};
 use serde::Serialize;
 #[derive(Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -11,35 +11,45 @@ pub(crate) struct PatchToolOutput {
 }
 #[derive(Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-#[schemars(rename_all = "camelCase", deny_unknown_fields)]
+# [schemars (rename_all = "camelCase" , deny_unknown_fields , transform = require_success_fields)]
 struct SuccessfulOperation {
     kind: OutputOperationKind,
     path: String,
-    #[schemars(required)]
     before: Option<FileStatistics>,
-    #[schemars(required)]
     after: Option<FileStatistics>,
     uuid: String,
-    #[schemars(required)]
     undo_of: Option<String>,
 }
 #[derive(Debug, Serialize, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 struct FileStatistics {
     #[serde(rename = "lineCount")]
-    #[schemars(rename = "lineCount")]
+    # [schemars (rename = "lineCount" , transform = remove_integer_format)]
     line_count: usize,
     #[serde(rename = "characterCount")]
-    #[schemars(rename = "characterCount")]
+    # [schemars (rename = "characterCount" , transform = remove_integer_format)]
     character_count: usize,
+}
+fn remove_integer_format(schema: &mut Schema) {
+    schema.remove("format");
+}
+fn require_success_fields(schema: &mut Schema) {
+    schema.insert(
+        String::from("required"),
+        rmcp::serde_json::json!(["kind", "path", "before", "after", "uuid", "undoOf"]),
+    );
+}
+fn require_failure_fields(schema: &mut Schema) {
+    schema.insert(
+        String::from("required"),
+        rmcp::serde_json::json!(["operation", "undoUuid", "reason"]),
+    );
 }
 #[derive(Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-#[schemars(rename_all = "camelCase", deny_unknown_fields)]
+# [schemars (rename_all = "camelCase" , deny_unknown_fields , transform = require_failure_fields)]
 struct OperationFailure {
-    #[schemars(required)]
     operation: Option<FailedOperation>,
-    #[schemars(required)]
     undo_uuid: Option<String>,
     reason: String,
 }
