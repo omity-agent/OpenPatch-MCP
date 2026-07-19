@@ -37,7 +37,7 @@ impl Application {
     }
     #[tool(
         name = "apply_patch",
-        description = "The `apply_patch` tool can be used to edit files. This is a FREEFORM tool, so do not wrap the patch in JSON."
+        description = "The `apply_patch` tool can be used to edit files. Each patch will be assigned a UUID. This is a FREEFORM tool, so do not wrap the patch in JSON."
     )]
     async fn apply_patch(
         &self,
@@ -50,7 +50,7 @@ impl Application {
     }
     #[tool(
         name = "undo_patch",
-        description = "Undo recorded patch operations."
+        description = "Undo recorded patch operations. When you want to undo changes, always use the `undo_patch` tool instead of manually rewriting them. The tool is more efficient and ensures that the undoed content are exactly the same as the original."
     )]
     async fn undo_patch(
         &self,
