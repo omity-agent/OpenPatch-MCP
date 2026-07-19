@@ -25,7 +25,7 @@ impl Application {
     }
     #[tool(
         name = "apply_patch",
-        description = "Use the `apply_patch` tool to edit files. This is a FREEFORM tool, so do not wrap the patch in JSON."
+        description = "The `apply_patch` tool can be used to edit files. This is a FREEFORM tool, so do not wrap the patch in JSON."
     )]
     async fn apply_patch(
         &self,
