@@ -1,40 +1,31 @@
+use anyhow::Context as _;
 use core::fmt;
 use std::path::PathBuf;
+use uuid::Uuid;
+use uuid_simd::UuidExt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct OperationId([u8; 16]);
+pub(super) struct OperationId(Uuid);
 impl OperationId {
     pub(super) fn now_v7() -> Self {
-        Self(fast_uuid_v7::gen_id().to_be_bytes())
+        Self(Uuid::from_u128(fast_uuid_v7::gen_id()))
     }
     pub(super) fn parse(input: &str) -> anyhow::Result<Self> {
-        let bytes = input.as_bytes();
-        anyhow::ensure!(bytes.len() == 36, "UUID must contain 36 characters");
-        for index in [8, 13, 18, 23] {
-            anyhow::ensure!(bytes.get(index) == Some(&b'-'), "UUID has invalid hyphens");
-        }
-        let compact = input
-            .char_indices()
-            .filter_map(|(index, character)| {
-                (!matches!(index, 8 | 13 | 18 | 23)).then_some(character)
-            })
-            .collect::<String>();
-        let value = u128::from_str_radix(&compact, 16)
-            .map_err(|error| anyhow::anyhow!("invalid UUID: {error}"))?;
-        Ok(Self(value.to_be_bytes()))
+        <Uuid as UuidExt>::parse_hyphenated(input)
+            .map(Self)
+            .context("invalid UUID")
     }
     pub(super) fn from_slice(bytes: &[u8]) -> anyhow::Result<Self> {
-        let array = <[u8; 16]>::try_from(bytes)
-            .map_err(|error| anyhow::anyhow!("invalid UUID in operation history: {error}"))?;
-        Ok(Self(array))
+        Uuid::from_slice(bytes)
+            .map(Self)
+            .context("invalid UUID in operation history")
     }
     pub(super) const fn as_bytes(&self) -> &[u8; 16] {
-        &self.0
+        self.0.as_bytes()
     }
 }
 impl fmt::Display for OperationId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let formatted = fast_uuid_v7::format_uuid(u128::from_be_bytes(self.0));
-        f.write_str(&formatted)
+        UuidExt::format_hyphenated(&self.0).fmt(f)
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

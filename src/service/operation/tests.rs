@@ -1,6 +1,6 @@
 use super::{
     OperationService,
-    model::{FileState, Mutation, OperationKind},
+    model::{FileState, Mutation, OperationId, OperationKind},
 };
 use rusqlite::TransactionBehavior;
 use std::fs;
@@ -16,6 +16,19 @@ fn apply(service: &OperationService, lines: &[String]) -> String {
 }
 fn service(directory: &tempfile::TempDir) -> OperationService {
     OperationService::open(&directory.path().join("history.sqlite3")).unwrap()
+}
+#[test]
+fn operation_ids_require_hyphenated_format() {
+    const UUID: &str = "019d0000-0000-7000-8000-000000000103";
+    let operation_id = OperationId::parse(UUID).unwrap();
+    assert_eq!(operation_id.to_string(), UUID);
+    for invalid_uuid in [
+        "019d0000000070008000000000000103",
+        "019d0000_0000-7000-8000-000000000103",
+    ] {
+        let error = OperationId::parse(invalid_uuid).unwrap_err();
+        assert_eq!(error.to_string(), "invalid UUID");
+    }
 }
 #[test]
 fn edit_undo_preserves_unrelated_changes_and_can_be_undone() {
