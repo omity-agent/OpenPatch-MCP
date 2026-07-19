@@ -1,3 +1,4 @@
+mod structured;
 use super::model::{OperationId, OperationKind};
 use core::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -116,15 +117,15 @@ impl Failure {
 }
 fn push_success(output: &mut String, success: &Success) {
     push_start(output, success.kind.tag(), &success.path);
-    push_uuid(output, "UUID", success.uuid);
-    if let Some(undo_of) = success.undo_of {
-        push_uuid(output, "UNDO_OF", undo_of);
-    }
     if let Some(before) = success.before {
         push_stats(output, "before", before);
     }
     if let Some(after) = success.after {
         push_stats(output, "after", after);
+    }
+    push_uuid(output, "UUID", success.uuid);
+    if let Some(undo_of) = success.undo_of {
+        push_uuid(output, "UNDO_OF", undo_of);
     }
     push_end(output, success.kind.tag());
 }

@@ -65,11 +65,13 @@ impl Application {
 fn to_tool_result(output: &crate::command::PatchOutput) -> CallToolResult {
     let succeeded = output.succeeded();
     let content = vec![ContentBlock::text(output.render().to_owned())];
-    if succeeded {
+    let mut result = if succeeded {
         CallToolResult::success(content)
     } else {
         CallToolResult::error(content)
-    }
+    };
+    result.structured_content = Some(output.structured().clone());
+    result
 }
 # [tool_handler (router = self . tool_router)]
 #[expect(
@@ -128,6 +130,59 @@ mod tests {
             panic!("expected call tool result");
         };
         assert_eq!(tool_result.is_error, Some(false));
+        let content = tool_result
+            .content
+            .first()
+            .unwrap()
+            .as_text()
+            .unwrap()
+            .text
+            .as_str();
+        assert!(content.find("after:").unwrap() < content.find("<UUID>").unwrap());
+        let structured = tool_result.structured_content.unwrap();
+        let result_object = structured.as_object().unwrap();
+        assert_eq!(
+            result_object.get("succeeded"),
+            Some(&rmcp::serde_json::json!(true))
+        );
+        let successes = result_object.get("successes").unwrap().as_array().unwrap();
+        let success = successes.first().unwrap().as_object().unwrap();
+        assert_eq!(
+            success.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["kind", "path", "before", "after", "uuid", "undoOf"]
+        );
+        assert_eq!(success.get("kind"), Some(&rmcp::serde_json::json!("EDIT")));
+        assert_eq!(
+            success.get("path").unwrap().as_str().unwrap(),
+            target_path.display().to_string()
+        );
+        assert_eq!(
+            success
+                .get("before")
+                .unwrap()
+                .get("lineCount")
+                .unwrap()
+                .as_u64(),
+            Some(1)
+        );
+        assert_eq!(
+            success
+                .get("after")
+                .unwrap()
+                .get("lineCount")
+                .unwrap()
+                .as_u64(),
+            Some(1)
+        );
+        assert!(success.get("uuid").unwrap().is_string());
+        assert!(
+            result_object
+                .get("failures")
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
         assert_eq!(fs::read_to_string(&target_path).unwrap(), "new\n");
         client.cancel().await.unwrap();
         server_handle.await.unwrap().unwrap();
