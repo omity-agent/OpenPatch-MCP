@@ -1,9 +1,6 @@
 extern crate alloc;
-pub mod cli;
-mod command;
-mod parser;
-mod patch;
-mod path_expansion;
-mod seek_sequence;
-pub mod server;
+mod engine;
+pub mod service;
 mod text;
+pub(crate) use engine::{parser, patch, path_expansion, seek_sequence};
+pub(crate) use service::{command, operation};

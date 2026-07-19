@@ -1,4 +1,4 @@
-use crate::{parser::UpdateChunk, patch::summary::FileStats, seek_sequence};
+use crate::{parser::UpdateChunk, seek_sequence};
 use diagnostic::match_failure_reason;
 use replacements::{Replacement, apply_replacements};
 use smallvec::SmallVec;
@@ -6,7 +6,6 @@ mod diagnostic;
 mod replacements;
 pub(crate) struct DerivedContents {
     pub(crate) contents: String,
-    pub(crate) before: FileStats,
     pub(crate) applied_chunks: usize,
     pub(crate) errors: Vec<String>,
 }
@@ -28,7 +27,6 @@ pub(crate) fn derive_new_contents(
     };
     DerivedContents {
         contents,
-        before: line_analysis.stats,
         applied_chunks: plan.applied_chunks,
         errors: plan.errors,
     }
@@ -140,7 +138,6 @@ fn make_replacement<'chunk>(
 struct LineAnalysis<'content> {
     lines: Vec<&'content str>,
     offsets: Vec<usize>,
-    stats: FileStats,
 }
 fn split_lines(contents: &str) -> LineAnalysis<'_> {
     let line_capacity = crate::text::line_count(contents);
@@ -160,12 +157,7 @@ fn split_lines(contents: &str) -> LineAnalysis<'_> {
         lines.push(line);
         offsets.push(start);
     }
-    let stats = FileStats::from_counts(lines.len(), crate::text::character_count(contents));
-    LineAnalysis {
-        lines,
-        offsets,
-        stats,
-    }
+    LineAnalysis { lines, offsets }
 }
 #[cfg(test)]
 mod tests;

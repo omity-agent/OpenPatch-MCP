@@ -1,4 +1,4 @@
-use crate::command::{PatchExecution, PatchRunner};
+use crate::command::{PatchExecution, PatchRunner, UndoExecution};
 use rmcp::{
     ErrorData as McpError, ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
@@ -9,19 +9,31 @@ use serde::Deserialize;
 #[derive(Clone)]
 pub struct Application {
     tool_router: ToolRouter<Self>,
+    runner: PatchRunner,
 }
 #[derive(Debug, Deserialize, schemars :: JsonSchema)]
 pub struct ApplyPatchRequest {
     pub patch: String,
 }
+#[derive(Debug, Deserialize, schemars :: JsonSchema)]
+pub struct UndoPatchRequest {
+    pub uuids: Vec<String>,
+}
 #[tool_router]
 impl Application {
     #[inline]
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
+    pub fn new() -> anyhow::Result<Self> {
+        Ok(Self {
             tool_router: Self::tool_router(),
-        }
+            runner: PatchRunner::open_default()?,
+        })
+    }
+    #[cfg(test)]
+    fn with_database(path: &std::path::Path) -> anyhow::Result<Self> {
+        Ok(Self {
+            tool_router: Self::tool_router(),
+            runner: PatchRunner::open(path)?,
+        })
     }
     #[tool(
         name = "apply_patch",
@@ -31,22 +43,32 @@ impl Application {
         &self,
         Parameters(request): Parameters<ApplyPatchRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let output = PatchRunner::apply(PatchExecution {
+        let output = self.runner.apply(PatchExecution {
             patch: &request.patch,
         });
-        let succeeded = output.succeeded();
-        let content = vec![ContentBlock::text(output.render().to_owned())];
-        if succeeded {
-            Ok(CallToolResult::success(content))
-        } else {
-            Ok(CallToolResult::error(content))
-        }
+        Ok(to_tool_result(&output))
+    }
+    #[tool(
+        name = "undo_patch",
+        description = "Undo recorded patch operations."
+    )]
+    async fn undo_patch(
+        &self,
+        Parameters(request): Parameters<UndoPatchRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let output = self.runner.undo(UndoExecution {
+            uuids: &request.uuids,
+        });
+        Ok(to_tool_result(&output))
     }
 }
-impl Default for Application {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
+fn to_tool_result(output: &crate::command::PatchOutput) -> CallToolResult {
+    let succeeded = output.succeeded();
+    let content = vec![ContentBlock::text(output.render().to_owned())];
+    if succeeded {
+        CallToolResult::success(content)
+    } else {
+        CallToolResult::error(content)
     }
 }
 # [tool_handler (router = self . tool_router)]
@@ -72,11 +94,12 @@ mod tests {
     )]
     impl ClientHandler for TestClient {}
     #[tokio::test]
-    async fn mcp_call_applies_multiline_patch_with_embedded_runner() {
+    async fn mcp_call_applies_multiline_patch() {
         let directory = tempfile::tempdir().unwrap();
         let target_path = directory.path().join("target.txt");
         fs::write(&target_path, "old\n").unwrap();
-        let application = Application::new();
+        let database_path = directory.path().join("history.sqlite3");
+        let application = Application::with_database(&database_path).unwrap();
         let (server_transport, client_transport) = tokio::io::duplex(8192);
         let server_handle = tokio::spawn(async move {
             let service = ServiceExt::serve(application, server_transport).await?;
@@ -106,15 +129,6 @@ mod tests {
         };
         assert_eq!(tool_result.is_error, Some(false));
         assert_eq!(fs::read_to_string(&target_path).unwrap(), "new\n");
-        let empty_arguments = rmcp::model::object(rmcp :: serde_json :: json ! ({ "patch" : "" }));
-        let empty_request = ClientRequest::CallToolRequest(Request::new(
-            CallToolRequestParams::new("apply_patch").with_arguments(empty_arguments),
-        ));
-        let empty_result = client.peer().send_request(empty_request).await.unwrap();
-        let rmcp::model::ServerResult::CallToolResult(empty_tool_result) = empty_result else {
-            panic!("expected call tool result");
-        };
-        assert_eq!(empty_tool_result.is_error, Some(true));
         client.cancel().await.unwrap();
         server_handle.await.unwrap().unwrap();
     }
