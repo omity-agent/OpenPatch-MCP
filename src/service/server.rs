@@ -53,13 +53,19 @@ impl Application {
         add_apply_route(&mut router, style)?;
         Ok(router)
     }
-    fn apply_openai(&self, Parameters(request): Parameters<ApplyPatchRequest>) -> CallToolResult {
+    fn apply_openai(
+        &self,
+        Parameters(request): Parameters<ApplyPatchRequest>,
+    ) -> Result<CallToolResult, McpError> {
         let output = self.runner.apply(PatchExecution {
             patch: &request.patch,
         });
         to_tool_result(&output)
     }
-    fn apply_general(&self, Parameters(request): Parameters<ReplaceRequest>) -> CallToolResult {
+    fn apply_general(
+        &self,
+        Parameters(request): Parameters<ReplaceRequest>,
+    ) -> Result<CallToolResult, McpError> {
         let output = self.runner.replace(ReplaceExecution {
             path: &request.path,
             old_string: &request.old_string,
@@ -75,7 +81,7 @@ impl Application {
         let output = self.runner.undo(UndoExecution {
             uuids: &request.uuids,
         });
-        Ok(to_tool_result(&output))
+        to_tool_result(&output)
     }
 }
 fn add_apply_route(router: &mut ToolRouter<Application>, style: InputStyle) -> anyhow::Result<()> {
@@ -90,16 +96,18 @@ where
     Ok(Tool::new("apply_patch", description, input_schema)
         .with_raw_output_schema(schema_for_type::<crate::operation::PatchToolOutput>()))
 }
-fn to_tool_result(output: &crate::command::PatchOutput) -> CallToolResult {
+fn to_tool_result(output: &crate::command::PatchOutput) -> Result<CallToolResult, McpError> {
     let succeeded = output.succeeded();
     let content = vec![ContentBlock::text(output.render().to_owned())];
+    let structured_content = rmcp::serde_json::Value::deserialize(output.structured())
+        .map_err(|error| McpError::internal_error(error.to_string(), None))?;
     let mut result = if succeeded {
         CallToolResult::success(content)
     } else {
         CallToolResult::error(content)
     };
-    result.structured_content = Some(output.structured().clone());
-    result
+    result.structured_content = Some(structured_content);
+    Ok(result)
 }
 # [tool_handler (router = self . tool_router)]
 #[expect(

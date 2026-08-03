@@ -37,8 +37,10 @@ async fn replaces_a_string() {
 fn verify_replacement_success(structured: &rmcp::serde_json::Value, target_path: &Path) {
     let result = structured.as_object().unwrap();
     assert_eq!(
-        result.get("succeeded"),
-        Some(&rmcp::serde_json::json!(true))
+        result
+            .get("succeeded")
+            .and_then(rmcp::serde_json::Value::as_bool),
+        Some(true)
     );
     let success = result
         .get("successes")
@@ -47,7 +49,12 @@ fn verify_replacement_success(structured: &rmcp::serde_json::Value, target_path:
         .unwrap()
         .first()
         .unwrap();
-    assert_eq!(success.get("kind"), Some(&rmcp::serde_json::json!("EDIT")));
+    assert_eq!(
+        success
+            .get("kind")
+            .and_then(rmcp::serde_json::Value::as_str),
+        Some("EDIT")
+    );
     assert_eq!(
         success.get("path").unwrap().as_str().unwrap(),
         target_path.display().to_string()
@@ -78,8 +85,18 @@ async fn call_replace(
     old_string: &str,
     new_string: &str,
 ) -> rmcp::model::CallToolResult {
-    let arguments = rmcp::model::object(
-        rmcp :: serde_json :: json ! ({ "path" : path . display () . to_string () , "old_string" : old_string , "new_string" : new_string , }),
+    let mut arguments = rmcp::serde_json::Map::new();
+    arguments.insert(
+        String::from("path"),
+        rmcp::serde_json::Value::from(path.display().to_string()),
+    );
+    arguments.insert(
+        String::from("old_string"),
+        rmcp::serde_json::Value::from(old_string),
+    );
+    arguments.insert(
+        String::from("new_string"),
+        rmcp::serde_json::Value::from(new_string),
     );
     let request = ClientRequest::CallToolRequest(Request::new(
         CallToolRequestParams::new("apply_patch").with_arguments(arguments),

@@ -7,7 +7,7 @@ pub(crate) struct PatchRunner {
 pub(crate) struct PatchOutput {
     succeeded: bool,
     content: String,
-    structured: rmcp::serde_json::Value,
+    structured: sonic_rs::Value,
 }
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct PatchExecution<'request> {
@@ -64,7 +64,7 @@ impl PatchOutput {
     pub(crate) fn render(&self) -> &str {
         &self.content
     }
-    pub(crate) const fn structured(&self) -> &rmcp::serde_json::Value {
+    pub(crate) const fn structured(&self) -> &sonic_rs::Value {
         &self.structured
     }
 }

@@ -1,6 +1,6 @@
 use super::{Failure, FileStats, OperationKind, OperationOutput, Success};
 use rmcp::schemars::{JsonSchema, Schema};
-use serde::Serialize;
+use sonic_rs::Serialize;
 #[derive(Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 #[schemars(rename_all = "camelCase", deny_unknown_fields)]
@@ -36,14 +36,17 @@ fn remove_integer_format(schema: &mut Schema) {
 fn require_success_fields(schema: &mut Schema) {
     schema.insert(
         String::from("required"),
-        rmcp::serde_json::json!(["kind", "path", "before", "after", "uuid", "undoOf"]),
+        required_fields(&["kind", "path", "before", "after", "uuid", "undoOf"]),
     );
 }
 fn require_failure_fields(schema: &mut Schema) {
     schema.insert(
         String::from("required"),
-        rmcp::serde_json::json!(["operation", "undoUuid", "reason"]),
+        required_fields(&["operation", "undoUuid", "reason"]),
     );
+}
+fn required_fields(fields: &[&str]) -> rmcp::serde_json::Value {
+    rmcp::serde_json::Value::Array(fields.iter().map(|field| (*field).into()).collect())
 }
 #[derive(Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -68,8 +71,8 @@ enum OutputOperationKind {
     Delete,
 }
 impl OperationOutput {
-    pub(crate) fn structured(&self) -> rmcp::serde_json::Value {
-        rmcp::serde_json::json!(PatchToolOutput::from(self))
+    pub(crate) fn structured(&self) -> sonic_rs::Value {
+        sonic_rs::json!(PatchToolOutput::from(self))
     }
 }
 impl From<&OperationOutput> for PatchToolOutput {

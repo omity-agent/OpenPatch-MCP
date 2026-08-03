@@ -67,7 +67,7 @@ fn verify_schemas(application: &Application, expected_properties: &[&str]) {
     assert_eq!(tools.len(), 2);
     assert!(tools.iter().all(|tool| tool.output_schema.is_some()));
     for tool in &tools {
-        let schema = rmcp::serde_json::to_string(tool.output_schema.as_ref().unwrap()).unwrap();
+        let schema = sonic_rs::to_string(tool.output_schema.as_ref().unwrap()).unwrap();
         assert!(!schema.contains(r#""format":"uint""#));
     }
     let apply = tools
@@ -90,7 +90,8 @@ async fn call_apply_patch(
     client: &rmcp::service::RunningService<rmcp::RoleClient, TestClient>,
     patch: &str,
 ) -> rmcp::model::CallToolResult {
-    let arguments = rmcp::model::object(rmcp :: serde_json :: json ! ({ "patch" : patch }));
+    let mut arguments = rmcp::serde_json::Map::new();
+    arguments.insert(String::from("patch"), rmcp::serde_json::Value::from(patch));
     let request = ClientRequest::CallToolRequest(Request::new(
         CallToolRequestParams::new("apply_patch").with_arguments(arguments),
     ));
@@ -103,8 +104,10 @@ async fn call_apply_patch(
 fn verify_success(structured: &rmcp::serde_json::Value, target_path: &std::path::Path) {
     let result = structured.as_object().unwrap();
     assert_eq!(
-        result.get("succeeded"),
-        Some(&rmcp::serde_json::json!(true))
+        result
+            .get("succeeded")
+            .and_then(rmcp::serde_json::Value::as_bool),
+        Some(true)
     );
     let success = result
         .get("successes")
@@ -115,11 +118,18 @@ fn verify_success(structured: &rmcp::serde_json::Value, target_path: &std::path:
         .unwrap()
         .as_object()
         .unwrap();
+    let mut success_fields = success.keys().map(String::as_str).collect::<Vec<_>>();
+    success_fields.sort_unstable();
     assert_eq!(
-        success.keys().map(String::as_str).collect::<Vec<_>>(),
-        ["kind", "path", "before", "after", "uuid", "undoOf"]
+        success_fields,
+        ["after", "before", "kind", "path", "undoOf", "uuid"]
     );
-    assert_eq!(success.get("kind"), Some(&rmcp::serde_json::json!("EDIT")));
+    assert_eq!(
+        success
+            .get("kind")
+            .and_then(rmcp::serde_json::Value::as_str),
+        Some("EDIT")
+    );
     assert_eq!(
         success.get("path").unwrap().as_str().unwrap(),
         target_path.display().to_string()
@@ -156,8 +166,10 @@ fn verify_success(structured: &rmcp::serde_json::Value, target_path: &std::path:
 fn verify_failure(structured: &rmcp::serde_json::Value) {
     let result = structured.as_object().unwrap();
     assert_eq!(
-        result.get("succeeded"),
-        Some(&rmcp::serde_json::json!(false))
+        result
+            .get("succeeded")
+            .and_then(rmcp::serde_json::Value::as_bool),
+        Some(false)
     );
     assert!(
         result
@@ -179,7 +191,9 @@ fn verify_failure(structured: &rmcp::serde_json::Value) {
     assert!(failure.get("operation").unwrap().is_null());
     assert!(failure.get("undoUuid").unwrap().is_null());
     assert_eq!(
-        failure.get("reason"),
-        Some(&rmcp::serde_json::json!("patch must not be empty"))
+        failure
+            .get("reason")
+            .and_then(rmcp::serde_json::Value::as_str),
+        Some("patch must not be empty")
     );
 }
