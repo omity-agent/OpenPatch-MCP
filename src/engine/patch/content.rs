@@ -5,10 +5,15 @@ mod diagnostic;
 mod matching;
 mod replacements;
 pub(crate) struct DerivedContents {
-    pub(crate) before_contents: String,
-    pub(crate) contents: String,
+    pub(crate) before_contents: DerivedText,
+    pub(crate) contents: DerivedText,
     pub(crate) applied_chunks: usize,
     pub(crate) errors: Vec<String>,
+}
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum DerivedText {
+    Original,
+    Modified(String),
 }
 pub(crate) fn derive_new_contents(
     original_contents: &str,
@@ -84,16 +89,16 @@ fn render_contents(
     original_contents: &str,
     line_analysis: &LineAnalysis<'_>,
     replacements: &[Replacement<'_>],
-) -> String {
+) -> DerivedText {
     if replacements.is_empty() {
-        return original_contents.to_owned();
+        return DerivedText::Original;
     }
-    apply_replacements(
+    DerivedText::Modified(apply_replacements(
         original_contents,
         &line_analysis.lines,
         &line_analysis.offsets,
         replacements,
-    )
+    ))
 }
 struct LineAnalysis<'content> {
     lines: Vec<&'content str>,

@@ -1,4 +1,4 @@
-use super::super::derive_new_contents;
+use super::super::{DerivedText, derive_new_contents};
 use crate::parser::UpdateChunk;
 #[test]
 fn already_applied_replacement_reconstructs_patch_before_contents() {
@@ -9,8 +9,11 @@ fn already_applied_replacement_reconstructs_patch_before_contents() {
         is_end_of_file: false,
     };
     let result = derive_new_contents("new\n", &[chunk]);
-    assert_eq!(result.contents, "new\n");
-    assert_eq!(result.before_contents, "old from patch\n");
+    assert_eq!(result.contents, DerivedText::Original);
+    assert_eq!(
+        result.before_contents,
+        DerivedText::Modified(String::from("old from patch\n"))
+    );
     assert_eq!(result.applied_chunks, 1);
     assert!(result.errors.is_empty());
 }
@@ -35,8 +38,11 @@ fn exact_target_match_precedes_a_fuzzy_old_match() {
         is_end_of_file: false,
     };
     let result = derive_new_contents("new\n", &[chunk]);
-    assert_eq!(result.contents, "new\n");
-    assert_eq!(result.before_contents, " new \n");
+    assert_eq!(result.contents, DerivedText::Original);
+    assert_eq!(
+        result.before_contents,
+        DerivedText::Modified(String::from(" new \n"))
+    );
     assert_eq!(result.applied_chunks, 1);
     assert!(result.errors.is_empty());
 }
@@ -49,8 +55,11 @@ fn already_applied_eof_deletion_restores_old_lines_at_the_end() {
         is_end_of_file: true,
     };
     let result = derive_new_contents("kept\n", &[chunk]);
-    assert_eq!(result.contents, "kept\n");
-    assert_eq!(result.before_contents, "kept\nremoved\n");
+    assert_eq!(result.contents, DerivedText::Original);
+    assert_eq!(
+        result.before_contents,
+        DerivedText::Modified(String::from("kept\nremoved\n"))
+    );
     assert_eq!(result.applied_chunks, 1);
     assert!(result.errors.is_empty());
 }
@@ -71,8 +80,14 @@ fn mixed_update_reconstructs_full_before_and_after_contents() {
         },
     ];
     let result = derive_new_contents("new one\nold two\n", &chunks);
-    assert_eq!(result.before_contents, "old one\nold two\n");
-    assert_eq!(result.contents, "new one\nnew two\n");
+    assert_eq!(
+        result.before_contents,
+        DerivedText::Modified(String::from("old one\nold two\n"))
+    );
+    assert_eq!(
+        result.contents,
+        DerivedText::Modified(String::from("new one\nnew two\n"))
+    );
     assert_eq!(result.applied_chunks, 2);
     assert!(result.errors.is_empty());
 }
@@ -93,8 +108,11 @@ fn multiple_already_applied_insertions_are_reconstructed_in_patch_order() {
         },
     ];
     let result = derive_new_contents("kept\nfirst\nsecond\n", &chunks);
-    assert_eq!(result.before_contents, "kept\n");
-    assert_eq!(result.contents, "kept\nfirst\nsecond\n");
+    assert_eq!(
+        result.before_contents,
+        DerivedText::Modified(String::from("kept\n"))
+    );
+    assert_eq!(result.contents, DerivedText::Original);
     assert_eq!(result.applied_chunks, 2);
     assert!(result.errors.is_empty());
 }
@@ -107,8 +125,11 @@ fn insertion_target_in_the_middle_is_not_already_applied() {
         is_end_of_file: false,
     };
     let result = derive_new_contents("added\nkept\n", &[chunk]);
-    assert_eq!(result.before_contents, "added\nkept\n");
-    assert_eq!(result.contents, "added\nkept\nadded\n");
+    assert_eq!(result.before_contents, DerivedText::Original);
+    assert_eq!(
+        result.contents,
+        DerivedText::Modified(String::from("added\nkept\nadded\n"))
+    );
     assert_eq!(result.applied_chunks, 1);
     assert!(result.errors.is_empty());
 }

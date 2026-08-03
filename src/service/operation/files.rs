@@ -1,8 +1,12 @@
 use super::model::{FileState, Mutation};
-use std::{fs, io, path::Path};
+use std::{
+    fs,
+    io::{self, BufRead as _},
+    path::Path,
+};
 pub(crate) fn snapshot(path: &Path, action: &str) -> anyhow::Result<FileState> {
     match fs::read_to_string(path) {
-        Ok(contents) => Ok(FileState::Present(contents)),
+        Ok(contents) => Ok(FileState::present(contents)),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(FileState::Missing),
         Err(error) => Err(anyhow::anyhow!("{action}: {error}")),
     }
@@ -59,8 +63,11 @@ fn verify_states(mutation: &Mutation, states: &[&FileState]) -> anyhow::Result<(
         anyhow::bail!("file operation state count does not match its path count");
     }
     for (change, expected) in mutation.changes.iter().zip(states) {
-        let current = snapshot(&change.path, "Failed to verify file before writing")?;
-        if &current != *expected {
+        if !state_matches(
+            &change.path,
+            expected,
+            "Failed to verify file before writing",
+        )? {
             anyhow::bail!(
                 "file changed concurrently before operation could be committed: {}",
                 change.path.display()
@@ -68,6 +75,43 @@ fn verify_states(mutation: &Mutation, states: &[&FileState]) -> anyhow::Result<(
         }
     }
     Ok(())
+}
+fn state_matches(path: &Path, expected: &FileState, action: &str) -> anyhow::Result<bool> {
+    let Some(expected_contents) = expected.contents() else {
+        return match fs::metadata(path) {
+            Ok(_) => Ok(false),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(true),
+            Err(error) => Err(anyhow::anyhow!("{action}: {error}")),
+        };
+    };
+    let file = match fs::File::open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(anyhow::anyhow!("{action}: {error}")),
+    };
+    let expected_bytes = expected_contents.as_bytes();
+    let mut compared_bytes = 0_usize;
+    let mut reader = io::BufReader::new(file);
+    loop {
+        let available = reader
+            .fill_buf()
+            .map_err(|error| anyhow::anyhow!("{action}: {error}"))?;
+        if available.is_empty() {
+            return Ok(compared_bytes == expected_bytes.len());
+        }
+        let available_len = available.len();
+        let next_compared_bytes = compared_bytes
+            .checked_add(available_len)
+            .ok_or_else(|| anyhow::anyhow!("{action}: file size overflowed"))?;
+        let Some(expected_chunk) = expected_bytes.get(compared_bytes..next_compared_bytes) else {
+            return Ok(false);
+        };
+        if expected_chunk != available {
+            return Ok(false);
+        }
+        compared_bytes = next_compared_bytes;
+        reader.consume(available_len);
+    }
 }
 fn restore_states(
     mutation: &Mutation,

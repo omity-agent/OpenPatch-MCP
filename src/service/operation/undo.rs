@@ -30,10 +30,10 @@ fn commit(
     service: &OperationService,
     target: OperationId,
 ) -> anyhow::Result<(Mutation, OperationId)> {
-    let mut connection = service.history.connection()?;
+    let mut connection = service.history.lock_connection()?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     service.history.ensure_available(&transaction, target)?;
-    let stored = service.history.load(&transaction, target)?;
+    let stored = super::store::HistoryStore::load(&transaction, target)?;
     let mutation = plan(&stored)?;
     let uuid = service
         .history
@@ -41,6 +41,7 @@ fn commit(
     service.history.prune(&transaction)?;
     files::apply(&mutation)?;
     if let Err(error) = transaction.commit() {
+        drop(connection);
         let rollback = files::roll_back(&mutation);
         return match rollback {
             Ok(()) => Err(error.into()),
@@ -49,6 +50,7 @@ fn commit(
             )),
         };
     }
+    drop(connection);
     Ok((mutation, uuid))
 }
 fn plan(stored: &StoredOperation) -> anyhow::Result<Mutation> {
@@ -99,7 +101,7 @@ fn plan_move(stored: &StoredOperation) -> anyhow::Result<Mutation> {
                 role: PathRole::Destination,
                 path: source.path.clone(),
                 before: current_source,
-                after: FileState::Present(restored),
+                after: FileState::present(restored),
             },
             PathChange {
                 role: PathRole::Source,
@@ -124,7 +126,7 @@ fn reverse_state(
             FileState::Present(before_contents),
             FileState::Present(after_contents),
             FileState::Present(current_contents),
-        ) => Ok(FileState::Present(merge::reverse_contents(
+        ) => Ok(FileState::present(merge::reverse_contents(
             before_contents,
             after_contents,
             current_contents,
@@ -141,7 +143,7 @@ fn reverse_state(
             anyhow::bail!("added file is already absent")
         }
         (FileState::Present(before_contents), FileState::Missing, FileState::Missing) => {
-            Ok(FileState::Present(before_contents.clone()))
+            Ok(FileState::share(before_contents))
         }
         (FileState::Present(_), FileState::Missing, FileState::Present(_)) => {
             anyhow::bail!("deleted path was recreated after the recorded operation")

@@ -4,7 +4,9 @@ use super::{
 };
 use rusqlite::TransactionBehavior;
 use std::fs;
+mod applying;
 mod replacement;
+mod validation;
 fn uuid_from(output: &str) -> String {
     let (_, after_start) = output.split_once("<UUID>\n").unwrap();
     let (uuid, _) = after_start.split_once("\n</UUID>").unwrap();
@@ -128,7 +130,7 @@ fn separate_service_instances_share_the_wal_history() {
 fn history_retention_uses_only_the_latest_thousand_records() {
     let directory = tempfile::tempdir().unwrap();
     let service = service(&directory);
-    let mut connection = service.history.connection().unwrap();
+    let mut connection = service.history.lock_connection().unwrap();
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .unwrap();
@@ -150,6 +152,7 @@ fn history_retention_uses_only_the_latest_thousand_records() {
         .unwrap();
     assert_eq!(count, 1000);
     transaction.commit().unwrap();
+    drop(connection);
 }
 #[test]
 fn batch_undo_keeps_successes_beside_invalid_uuid_failure() {

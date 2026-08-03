@@ -1,4 +1,6 @@
-use super::{derive_new_contents, replacements::Replacement, replacements::apply_replacements};
+use super::{
+    DerivedText, derive_new_contents, replacements::Replacement, replacements::apply_replacements,
+};
 use crate::parser::UpdateChunk;
 mod idempotence;
 #[test]
@@ -10,7 +12,11 @@ fn insertion_without_old_lines_precedes_logical_trailing_empty_line() {
         is_end_of_file: false,
     };
     let result = derive_new_contents("a\n\n", &[chunk]);
-    assert_eq!(result.contents, "a\nb\n");
+    assert_eq!(
+        result.contents,
+        DerivedText::Modified(String::from("a\nb\n"))
+    );
+    assert_eq!(result.before_contents, DerivedText::Original);
     assert_eq!(result.applied_chunks, 1);
     assert!(result.errors.is_empty());
 }
@@ -23,7 +29,10 @@ fn replacement_can_ignore_empty_lines_in_original() {
         is_end_of_file: false,
     };
     let result = derive_new_contents("a\n\nb\nc\n", &[chunk]);
-    assert_eq!(result.contents, "updated\nc\n");
+    assert_eq!(
+        result.contents,
+        DerivedText::Modified(String::from("updated\nc\n"))
+    );
     assert_eq!(result.applied_chunks, 1);
     assert!(result.errors.is_empty());
 }
@@ -36,7 +45,10 @@ fn replacement_can_ignore_consecutive_space_counts() {
         is_end_of_file: false,
     };
     let result = derive_new_contents("a  b\n\nc   d\n", &[chunk]);
-    assert_eq!(result.contents, "updated\n");
+    assert_eq!(
+        result.contents,
+        DerivedText::Modified(String::from("updated\n"))
+    );
     assert_eq!(result.applied_chunks, 1);
     assert!(result.errors.is_empty());
 }

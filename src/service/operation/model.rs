@@ -1,5 +1,7 @@
+mod file;
 use anyhow::Context as _;
 use core::fmt;
+pub(crate) use file::{FileContents, FileState};
 use std::path::PathBuf;
 use uuid::Uuid;
 use uuid_simd::UuidExt;
@@ -47,43 +49,6 @@ impl OperationKind {
             Self::Add => 0,
             Self::Edit => 1,
             Self::Delete => 2,
-        }
-    }
-}
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum FileState {
-    Missing,
-    Present(String),
-}
-impl FileState {
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "matching the borrowed enum keeps the returned contents borrowed"
-    )]
-    pub(super) const fn contents(&self) -> Option<&String> {
-        match self {
-            &Self::Missing => None,
-            Self::Present(contents) => Some(contents),
-        }
-    }
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the state content is borrowed for the SQLite parameter"
-    )]
-    pub(super) fn database_parts(&self) -> (i64, Option<&str>) {
-        match self {
-            Self::Missing => (0, None),
-            Self::Present(contents) => (1, Some(contents)),
-        }
-    }
-    pub(super) fn from_database(
-        present: i64,
-        stored_contents: Option<String>,
-    ) -> anyhow::Result<Self> {
-        match (present, stored_contents) {
-            (0, None) => Ok(Self::Missing),
-            (1, Some(contents)) => Ok(Self::Present(contents)),
-            _ => anyhow::bail!("invalid file state in operation history"),
         }
     }
 }

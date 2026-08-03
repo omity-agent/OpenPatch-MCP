@@ -6,7 +6,7 @@ use crate::{
     },
     parser::{FileHunk, UpdateChunk},
 };
-use content::derive_new_contents;
+use content::{DerivedText, derive_new_contents};
 use std::path::PathBuf;
 pub(crate) struct PlannedHunk {
     pub(crate) mutation: Option<Mutation>,
@@ -26,11 +26,11 @@ pub(crate) fn plan_hunk(hunk: FileHunk) -> anyhow::Result<PlannedHunk> {
 }
 fn plan_add(path: PathBuf, contents: String) -> anyhow::Result<PlannedHunk> {
     let observed = files::snapshot(&path, "Failed to inspect file before adding")?;
-    let after = FileState::Present(contents);
-    let before = if observed == after {
-        FileState::Missing
+    let proposed_after = FileState::present(contents);
+    let (before, after) = if observed == proposed_after {
+        (FileState::Missing, observed.clone())
     } else {
-        observed.clone()
+        (observed.clone(), proposed_after)
     };
     Ok(PlannedHunk {
         mutation: Some(Mutation::single(OperationKind::Add, path, before, after)),
@@ -67,13 +67,18 @@ fn plan_update(
     let FileState::Present(original) = &source_observed else {
         anyhow::bail!("Failed to read file to update: file does not exist");
     };
-    let (before_contents, after_contents, chunk_errors, applied_chunks) = if chunks.is_empty() {
-        (original.clone(), original.clone(), Vec::new(), 1)
+    let (source_before, destination_after, chunk_errors, applied_chunks) = if chunks.is_empty() {
+        (
+            FileState::share(original),
+            FileState::share(original),
+            Vec::new(),
+            1,
+        )
     } else {
         let derived = derive_new_contents(original, chunks);
         (
-            derived.before_contents,
-            derived.contents,
+            state_from_derived(derived.before_contents, original),
+            state_from_derived(derived.contents, original),
             derived.errors,
             derived.applied_chunks,
         )
@@ -85,8 +90,6 @@ fn plan_update(
             chunk_errors,
         });
     }
-    let source_before = FileState::Present(before_contents);
-    let destination_after = FileState::Present(after_contents);
     let (mutation, observed) = match move_path {
         None => (
             Mutation::single(OperationKind::Edit, path, source_before, destination_after),
@@ -116,6 +119,15 @@ fn plan_update(
         observed,
         chunk_errors,
     })
+}
+fn state_from_derived(
+    derived: DerivedText,
+    original: &crate::operation::model::FileContents,
+) -> FileState {
+    match derived {
+        DerivedText::Original => FileState::share(original),
+        DerivedText::Modified(modified) => FileState::present(modified),
+    }
 }
 #[expect(
     clippy::pattern_type_mismatch,

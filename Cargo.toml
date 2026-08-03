@@ -82,12 +82,19 @@ edition = "2024"
 
 [dependencies]
 anyhow = ">=1.0.104"
+blake3 = ">=1.8.5"
 bytecount = ">=0.6.9"
 clap = { version = ">=4.6.2", features = ["derive"] }
 diffy = ">=0.5.1"
 directories = ">=6.0.0"
 fast-uuid-v7 = ">=0.1.6"
 itoa = ">=1.0.18"
+lz4_flex = { version = ">=0.14.0", default-features = false, features = [
+    "checked-decode",
+    "safe-decode",
+    "safe-encode",
+    "std",
+] }
 memchr = ">=2.8.2"
 mimalloc = { version = ">=0.1.48", features = ["v3"] }
 rmcp = { version = ">=2.2.0", features = [
