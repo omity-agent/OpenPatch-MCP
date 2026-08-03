@@ -24,41 +24,6 @@ pub(crate) fn plan_hunk(hunk: FileHunk) -> anyhow::Result<PlannedHunk> {
         } => plan_update(path, move_path, &chunks),
     }
 }
-pub(crate) fn plan_replacement(
-    path: PathBuf,
-    old_string: &str,
-    new_string: &str,
-) -> anyhow::Result<PlannedHunk> {
-    anyhow::ensure!(!old_string.is_empty(), "old_string must not be empty");
-    anyhow::ensure!(
-        old_string != new_string,
-        "old_string and new_string must differ"
-    );
-    let observed = files::snapshot(&path, "Failed to read file to update")?;
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the observed state remains owned by the replacement plan"
-    )]
-    let FileState::Present(contents) = &observed else {
-        anyhow::bail!("Failed to read file to update: file does not exist");
-    };
-    let match_count = contents.matches(old_string).count();
-    anyhow::ensure!(
-        match_count == 1,
-        "old_string must match exactly once; found {match_count} matches"
-    );
-    let after_contents = contents.replacen(old_string, new_string, 1);
-    Ok(PlannedHunk {
-        mutation: Some(Mutation::single(
-            OperationKind::Edit,
-            path,
-            observed.clone(),
-            FileState::Present(after_contents),
-        )),
-        observed: vec![observed],
-        chunk_errors: Vec::new(),
-    })
-}
 fn plan_add(path: PathBuf, contents: String) -> anyhow::Result<PlannedHunk> {
     let observed = files::snapshot(&path, "Failed to inspect file before adding")?;
     let after = FileState::Present(contents);

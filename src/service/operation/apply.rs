@@ -3,8 +3,8 @@ use super::{
     model::{Mutation, OperationId, OperationKind, PathRole},
     output::{Failure, FileStats, OperationOutput, Success},
 };
-use crate::parser::FileHunk;
-use rusqlite::{Transaction, TransactionBehavior};
+use crate::parser::{ChunkLines, FileHunk, UpdateChunk};
+use rusqlite::TransactionBehavior;
 pub(super) fn execute(service: &OperationService, patch: &str) -> OperationOutput {
     if patch.trim().is_empty() {
         return OperationOutput::failed(String::from("patch must not be empty"));
@@ -29,19 +29,39 @@ pub(super) fn execute_replacement(
     new_string: &str,
 ) -> OperationOutput {
     let display_path = std::path::PathBuf::from(path);
-    match commit_replacement(service, path, old_string, new_string) {
-        Ok((mutation, uuid)) => {
-            let mut output = OperationOutput::default();
-            output.push_success(success(&mutation, uuid));
-            output
-        }
+    let expanded_path = match expanded_absolute_path(path) {
+        Ok(expanded) => expanded,
         Err(error) => {
             let failure = Failure::file(OperationKind::Edit, display_path, error.to_string());
             let mut output = OperationOutput::default();
             output.push_failure(failure);
-            output
+            return output;
         }
-    }
+    };
+    let hunk = FileHunk::Update {
+        path: expanded_path,
+        move_path: None,
+        chunks: vec![UpdateChunk {
+            change_context: None,
+            old_lines: replacement_lines(old_string),
+            new_lines: replacement_lines(new_string),
+            is_end_of_file: false,
+        }],
+    };
+    let mut output = OperationOutput::default();
+    execute_hunk(service, hunk, &mut output);
+    output
+}
+fn expanded_absolute_path(path: &str) -> anyhow::Result<std::path::PathBuf> {
+    let expanded_path = crate::path_expansion::expand_path(path)?;
+    anyhow::ensure!(
+        expanded_path.is_absolute(),
+        "path must be absolute after expansion"
+    );
+    Ok(expanded_path)
+}
+fn replacement_lines(value: &str) -> ChunkLines {
+    value.lines().map(str::to_owned).collect()
 }
 fn execute_hunk(service: &OperationService, hunk: FileHunk, output: &mut OperationOutput) {
     let failure_context = crate::patch::hunk_context(&hunk);
@@ -64,14 +84,6 @@ fn commit_hunk(
     let mut connection = service.history.connection()?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let planned = crate::patch::plan_hunk(hunk)?;
-    commit_planned(service, transaction, planned, output)
-}
-fn commit_planned(
-    service: &OperationService,
-    transaction: Transaction<'_>,
-    planned: crate::patch::PlannedHunk,
-    output: &mut OperationOutput,
-) -> anyhow::Result<Option<(Mutation, OperationId)>> {
     let failure_path = planned
         .mutation
         .as_ref()
@@ -98,24 +110,6 @@ fn commit_planned(
         };
     }
     Ok(Some((mutation, uuid)))
-}
-fn commit_replacement(
-    service: &OperationService,
-    path: &str,
-    old_string: &str,
-    new_string: &str,
-) -> anyhow::Result<(Mutation, OperationId)> {
-    let expanded_path = crate::path_expansion::expand_path(path)?;
-    anyhow::ensure!(
-        expanded_path.is_absolute(),
-        "path must be absolute after expansion"
-    );
-    let mut connection = service.history.connection()?;
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let planned = crate::patch::plan_replacement(expanded_path, old_string, new_string)?;
-    let mut output = OperationOutput::default();
-    commit_planned(service, transaction, planned, &mut output)?
-        .ok_or_else(|| anyhow::anyhow!("replacement did not produce a file mutation"))
 }
 fn success(mutation: &Mutation, uuid: OperationId) -> Success {
     let (before, after) = logical_stats(mutation);
