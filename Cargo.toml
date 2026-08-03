@@ -42,12 +42,12 @@ unwrap_used = "allow"
 wildcard_dependencies = "allow"
 
 [lints.rust]
-future-incompatible = "warn"
-let-underscore = "warn"
-keyword-idents = "warn"
-nonstandard-style = "warn"
-refining-impl-trait = "warn"
-rust-2024-compatibility = "warn"
+future_incompatible = { level = "warn", priority = -1 }
+let_underscore = { level = "warn", priority = -1 }
+keyword_idents = { level = "warn", priority = -1 }
+nonstandard_style = { level = "warn", priority = -1 }
+refining_impl_trait = { level = "warn", priority = -1 }
+rust_2024_compatibility = { level = "warn", priority = -1 }
 
 missing_docs = "allow"
 
@@ -76,7 +76,7 @@ codegen-units = 1
 rpath = false
 
 [package]
-name = "apply-patch-mcp"
+name = "openpatch"
 version = "0.0.0"
 edition = "2024"
 

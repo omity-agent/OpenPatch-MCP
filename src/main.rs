@@ -1,4 +1,4 @@
-use apply_patch_mcp::service::{cli::Cli, server::Application};
+use openpatch::service::{cli::Cli, server::Application};
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 #[tokio::main]
