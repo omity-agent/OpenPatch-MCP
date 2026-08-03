@@ -26,6 +26,14 @@ impl OperationService {
     pub(crate) fn apply(&self, patch: &str) -> OperationOutput {
         apply::execute(self, patch)
     }
+    pub(crate) fn replace(
+        &self,
+        path: &str,
+        old_string: &str,
+        new_string: &str,
+    ) -> OperationOutput {
+        apply::execute_replacement(self, path, old_string, new_string)
+    }
     pub(crate) fn undo(&self, uuids: &[String]) -> OperationOutput {
         undo::execute(self, uuids)
     }

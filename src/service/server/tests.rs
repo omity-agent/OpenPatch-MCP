@@ -1,9 +1,11 @@
 use super::Application;
+use crate::service::cli::InputStyle;
 use rmcp::{
     ClientHandler, ServiceExt,
     model::{CallToolRequestParams, ClientRequest, Request},
 };
 use std::fs;
+mod general;
 #[derive(Clone, Default)]
 struct TestClient;
 #[expect(
@@ -12,13 +14,16 @@ struct TestClient;
 )]
 impl ClientHandler for TestClient {}
 #[tokio::test]
-async fn mcp_call_applies_multiline_patch() {
+async fn openai_style_applies_multiline_patch() {
     let directory = tempfile::tempdir().unwrap();
     let target_path = directory.path().join("target.txt");
     fs::write(&target_path, "old\n").unwrap();
-    let application =
-        Application::with_database(&directory.path().join("history.sqlite3")).unwrap();
-    verify_schemas(&application);
+    let application = Application::with_database(
+        &directory.path().join("history.sqlite3"),
+        InputStyle::Openai,
+    )
+    .unwrap();
+    verify_schemas(&application, &["patch"]);
     let (server_transport, client_transport) = tokio::io::duplex(8192);
     let server_handle = tokio::spawn(async move {
         let service = ServiceExt::serve(application, server_transport).await?;
@@ -57,7 +62,7 @@ async fn mcp_call_applies_multiline_patch() {
     client.cancel().await.unwrap();
     server_handle.await.unwrap().unwrap();
 }
-fn verify_schemas(application: &Application) {
+fn verify_schemas(application: &Application, expected_properties: &[&str]) {
     let tools = application.tool_router.list_all();
     assert_eq!(tools.len(), 2);
     assert!(tools.iter().all(|tool| tool.output_schema.is_some()));
@@ -65,6 +70,21 @@ fn verify_schemas(application: &Application) {
         let schema = rmcp::serde_json::to_string(tool.output_schema.as_ref().unwrap()).unwrap();
         assert!(!schema.contains(r#""format":"uint""#));
     }
+    let apply = tools
+        .iter()
+        .find(|tool| tool.name == "apply_patch")
+        .unwrap();
+    let mut properties = apply
+        .input_schema
+        .get("properties")
+        .unwrap()
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    properties.sort_unstable();
+    assert_eq!(properties, expected_properties);
 }
 async fn call_apply_patch(
     client: &rmcp::service::RunningService<rmcp::RoleClient, TestClient>,

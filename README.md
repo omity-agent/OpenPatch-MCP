@@ -1,11 +1,14 @@
 OpenPatch 用于向 MCP 客户端提供文件编辑功能。
 
-只适用于 GPT 系列模型。
-
 暴露两个工具：
 
-- `apply_patch`：应用补丁。输入语法与 OpenAI Apply Patch 工具完全相同。
+- `apply_patch`：编辑文件。
 - `undo_patch`：撤回补丁。输入 Patch 的 UUID。
+
+输入格式：
+
+- `--style=general`（默认）：`apply_patch` 接收 `path`、`old_string`、`new_string`。
+- `--style=openai`：`apply_patch` 接收 `patch`，语法与 OpenAI Apply Patch 工具相同。
 
 OpenPatch 与 OpenAI Apply Patch 工具存在一定差异，包括：
 

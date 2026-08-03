@@ -3,8 +3,8 @@ use openpatch::service::{cli::Cli, server::Application};
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let _cli = <Cli as clap::Parser>::parse();
-    let application = Application::new()?;
+    let cli = <Cli as clap::Parser>::parse();
+    let application = Application::new(cli.style)?;
     let service = rmcp::ServiceExt::serve(application, rmcp::transport::stdio()).await?;
     service.waiting().await?;
     Ok(())

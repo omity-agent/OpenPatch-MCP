@@ -4,6 +4,7 @@ use super::{
 };
 use rusqlite::TransactionBehavior;
 use std::fs;
+mod replacement;
 fn uuid_from(output: &str) -> String {
     let (_, after_start) = output.split_once("<UUID>\n").unwrap();
     let (uuid, _) = after_start.split_once("\n</UUID>").unwrap();

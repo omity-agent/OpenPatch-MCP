@@ -14,6 +14,12 @@ pub(crate) struct PatchExecution<'request> {
     pub(crate) patch: &'request str,
 }
 #[derive(Debug, Copy, Clone)]
+pub(crate) struct ReplaceExecution<'request> {
+    pub(crate) path: &'request str,
+    pub(crate) old_string: &'request str,
+    pub(crate) new_string: &'request str,
+}
+#[derive(Debug, Copy, Clone)]
 pub(crate) struct UndoExecution<'request> {
     pub(crate) uuids: &'request [String],
 }
@@ -31,6 +37,12 @@ impl PatchRunner {
     }
     pub(crate) fn apply(&self, request: PatchExecution<'_>) -> PatchOutput {
         let output = self.service.apply(request.patch);
+        PatchOutput::from_operation(&output)
+    }
+    pub(crate) fn replace(&self, request: ReplaceExecution<'_>) -> PatchOutput {
+        let output = self
+            .service
+            .replace(request.path, request.old_string, request.new_string);
         PatchOutput::from_operation(&output)
     }
     pub(crate) fn undo(&self, request: UndoExecution<'_>) -> PatchOutput {
