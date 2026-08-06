@@ -11,17 +11,37 @@ pub(super) fn execute(service: &OperationService, uuid_texts: &[String]) -> Oper
         return OperationOutput::failed(String::from("uuids must not be empty"));
     }
     let mut output = OperationOutput::default();
+    let mut targets = Vec::with_capacity(uuid_texts.len());
     for uuid_text in uuid_texts {
-        let target = match OperationId::parse(uuid_text) {
-            Ok(uuid) => uuid,
-            Err(error) => {
-                output.push_failure(Failure::undo(uuid_text.clone(), error.to_string()));
-                continue;
+        match OperationId::parse(uuid_text) {
+            Ok(uuid) => targets.push((uuid_text.clone(), uuid)),
+            Err(error) => output.push_failure(Failure::undo(uuid_text.clone(), error.to_string())),
+        }
+    }
+    let target_ids = targets
+        .iter()
+        .map(|target_entry| target_entry.1)
+        .collect::<Vec<_>>();
+    let order = match super::store::for_undo(&service.history, &target_ids) {
+        Ok(order) => order,
+        Err(error) => {
+            let reason = error.to_string();
+            for (uuid_text, _) in targets {
+                output.push_failure(Failure::undo(uuid_text, reason.clone()));
             }
+            return output;
+        }
+    };
+    for index in order {
+        let Some((uuid_text, target)) = targets.get(index).cloned() else {
+            output.push_failure(Failure::global(String::from(
+                "undo target ordering returned an invalid index",
+            )));
+            return output;
         };
         match commit(service, target) {
             Ok((mutation, uuid)) => output.push_success(success(&mutation, uuid, target)),
-            Err(error) => output.push_failure(Failure::undo(uuid_text.clone(), error.to_string())),
+            Err(error) => output.push_failure(Failure::undo(uuid_text, error.to_string())),
         }
     }
     output

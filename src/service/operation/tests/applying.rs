@@ -7,7 +7,7 @@ fn uuids_from(output: &str) -> Vec<String> {
         .map(|part| part.split_once("\n</UUID>").unwrap().0.to_owned())
         .collect()
 }
-fn two_uuids(output: &str) -> (String, String) {
+fn two_uuids(output: &str) -> [String; 2] {
     let mut uuids = uuids_from(output).into_iter();
     let Some(first) = uuids.next() else {
         panic!("expected first operation UUID");
@@ -16,7 +16,7 @@ fn two_uuids(output: &str) -> (String, String) {
         panic!("expected second operation UUID");
     };
     assert!(uuids.next().is_none());
-    (first, second)
+    [first, second]
 }
 #[test]
 fn already_applied_update_can_be_undone_to_patch_before_contents() {
@@ -67,7 +67,7 @@ fn multiple_hunks_on_one_file_keep_independent_undo_history() {
     let applied = service.apply(&patch);
     assert!(applied.succeeded(), "{}", applied.render());
     assert_eq!(fs::read_to_string(&target).unwrap(), "three\n");
-    let (first_uuid, second_uuid) = two_uuids(&applied.render());
+    let [first_uuid, second_uuid] = two_uuids(&applied.render());
     let undone_second = service.undo(core::slice::from_ref(&second_uuid));
     assert!(undone_second.succeeded(), "{}", undone_second.render());
     assert_eq!(fs::read_to_string(&target).unwrap(), "two\n");
@@ -92,8 +92,8 @@ fn failed_hunk_does_not_discard_other_hunks() {
     assert!(!applied.succeeded());
     assert_eq!(fs::read_to_string(&first).unwrap(), "first\n");
     assert_eq!(fs::read_to_string(&second).unwrap(), "second\n");
-    let (first_uuid, second_uuid) = two_uuids(&applied.render());
-    let undone = service.undo(&[second_uuid, first_uuid]);
+    let [first_uuid, second_uuid] = two_uuids(&applied.render());
+    let undone = service.undo(&[first_uuid, second_uuid]);
     assert!(undone.succeeded(), "{}", undone.render());
     assert!(!first.exists());
     assert!(!second.exists());

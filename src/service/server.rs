@@ -73,7 +73,7 @@ impl Application {
         });
         to_tool_result(&output)
     }
-    # [tool (name = "undo_patch" , description = "Undo recorded patch operations. When you want to undo changes, always use the `undo_patch` tool instead of manually rewriting them. The tool is more efficient and ensures that the undoed content are exactly the same as the original." , output_schema = rmcp :: handler :: server :: tool :: schema_for_type ::< crate :: operation :: PatchToolOutput > ())]
+    # [tool (name = "undo_patch" , description = "Undo recorded patch operations. The input order does not matter. When you want to undo changes, always use the `undo_patch` tool instead of manually rewriting them. The tool is more efficient and ensures that the undoed content are exactly the same as the original." , output_schema = rmcp :: handler :: server :: tool :: schema_for_type ::< crate :: operation :: PatchToolOutput > ())]
     async fn undo_patch(
         &self,
         Parameters(request): Parameters<UndoPatchRequest>,

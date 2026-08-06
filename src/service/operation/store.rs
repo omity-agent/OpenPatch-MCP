@@ -9,10 +9,12 @@ use std::{
     sync::{Mutex, MutexGuard},
 };
 mod content;
+mod ordering;
 mod path;
 mod schema;
 #[cfg(test)]
 mod tests;
+pub(super) use ordering::for_undo;
 const RETAINED_OPERATIONS: i64 = 1000;
 #[derive(Debug, Clone)]
 pub(super) struct HistoryStore {

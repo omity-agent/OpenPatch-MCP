@@ -108,7 +108,7 @@ impl Failure {
             reason,
         }
     }
-    const fn global(reason: String) -> Self {
+    pub(super) const fn global(reason: String) -> Self {
         Self {
             operation: None,
             undo_uuid: None,
