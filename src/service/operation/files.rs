@@ -1,7 +1,8 @@
 use super::model::{FileState, Mutation};
+use atomic_write_file::AtomicWriteFile;
 use std::{
     fs,
-    io::{self, BufRead as _},
+    io::{self, BufRead as _, Write as _},
     path::Path,
 };
 pub(crate) fn snapshot(path: &Path, action: &str) -> anyhow::Result<FileState> {
@@ -145,7 +146,7 @@ fn write_state(path: &Path, state: &FileState) -> anyhow::Result<()> {
         .map_or_else(|| remove_file(path), |contents| write_file(path, contents))
 }
 fn write_file(path: &Path, contents: &str) -> anyhow::Result<()> {
-    match fs::write(path, contents.as_bytes()) {
+    match write_file_atomically(path, contents) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
             if let Some(parent) = path.parent() {
@@ -153,11 +154,16 @@ fn write_file(path: &Path, contents: &str) -> anyhow::Result<()> {
                     anyhow::anyhow!("Failed to create parent directories: {source}")
                 })?;
             }
-            fs::write(path, contents.as_bytes())
+            write_file_atomically(path, contents)
                 .map_err(|source| anyhow::anyhow!("Failed to write file: {source}"))
         }
         Err(error) => Err(anyhow::anyhow!("Failed to write file: {error}")),
     }
+}
+fn write_file_atomically(path: &Path, contents: &str) -> io::Result<()> {
+    let mut file = AtomicWriteFile::open(path)?;
+    file.write_all(contents.as_bytes())?;
+    file.commit()
 }
 fn remove_file(path: &Path) -> anyhow::Result<()> {
     match fs::metadata(path) {

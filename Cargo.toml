@@ -81,44 +81,45 @@ version = "0.0.0"
 edition = "2024"
 
 [dependencies]
-anyhow = ">=1.0.104"
-blake3 = ">=1.8.6"
-bytecount = ">=0.6.9"
-clap = { version = ">=4.6.5", features = ["derive"] }
-diffy = ">=0.5.1"
-directories = ">=6.0.0"
-fast-uuid-v7 = ">=0.1.8"
-itoa = ">=1.0.18"
-lz4_flex = { version = ">=0.14.0", default-features = false, features = [
+anyhow = "*"
+atomic-write-file = "*"
+blake3 = "*"
+bytecount = "*"
+clap = { version = "*", features = ["derive"] }
+diffy = "*"
+directories = "*"
+fast-uuid-v7 = "*"
+itoa = "*"
+lz4_flex = { version = "*", default-features = false, features = [
     "checked-decode",
     "safe-decode",
     "safe-encode",
     "std",
 ] }
-memchr = ">=2.8.3"
-mimalloc = { version = ">=0.1.48", features = ["v3"] }
-rmcp = { version = ">=3.1.1", features = [
+memchr = "*"
+mimalloc = { version = "*", features = ["v3"] }
+rmcp = { version = "*", features = [
     "client",
     "server",
     "macros",
     "transport-io",
 ] }
-rusqlite = { version = ">=0.40.1", features = ["bundled"] }
-rustc-hash = ">=2.1.3"
-schemars = ">=1.2.2"
-serde = { version = ">=1.0.229", features = ["derive", "unstable"] }
-shellexpand = ">=3.1.2"
-smallvec = ">=1.15.2"
-sonic-rs = ">=0.5.8"
-thiserror = ">=2.0.19"
-tokio = { version = ">=1.53.1", features = [
+rusqlite = { version = "*", features = ["bundled"] }
+rustc-hash = "*"
+schemars = "*"
+serde = { version = "*", features = ["derive", "unstable"] }
+shellexpand = "*"
+smallvec = "*"
+sonic-rs = "*"
+thiserror = "*"
+tokio = { version = "*", features = [
     "io-std",
     "macros",
     "rt-multi-thread",
 ] }
-unicode-normalization = ">=0.1.25"
-uuid = ">=1.24.0"
-uuid-simd = ">=0.8.0"
+unicode-normalization = "*"
+uuid = "*"
+uuid-simd = "*"
 
 [dev-dependencies]
-tempfile = ">=3.27.0"
+tempfile = "*"
