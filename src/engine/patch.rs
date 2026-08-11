@@ -27,7 +27,7 @@ pub(crate) fn plan_hunk(hunk: FileHunk) -> anyhow::Result<PlannedHunk> {
 }
 fn plan_add(path: PathBuf, contents: String) -> anyhow::Result<PlannedHunk> {
     let observed = files::snapshot(&path, "Failed to inspect file before adding")?;
-    let proposed_after = FileState::present(contents);
+    let proposed_after = FileState::present(LineEndings::normalize_owned(contents));
     let (before, after) = if observed == proposed_after {
         (FileState::Missing, observed.clone())
     } else {

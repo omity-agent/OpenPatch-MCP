@@ -87,6 +87,12 @@ impl LineEndings {
         normalized.push_str(remainder);
         Cow::Owned(normalized)
     }
+    pub(crate) fn normalize_owned(contents: String) -> String {
+        if !contents.as_bytes().contains(&b'\r') {
+            return contents;
+        }
+        Self::normalize(&contents).into_owned()
+    }
     pub(crate) fn render(self, normalized: String) -> String {
         match self.selected {
             Sequence::Cr => normalized.replace('\n', Sequence::Cr.as_str()),
