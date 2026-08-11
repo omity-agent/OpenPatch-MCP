@@ -16,7 +16,12 @@ pub(crate) struct PlannedHunk {
 }
 pub(crate) fn plan_hunk(hunk: FileHunk) -> anyhow::Result<PlannedHunk> {
     match hunk {
-        FileHunk::Add { path, contents, .. } => plan_add(path, contents),
+        FileHunk::Add {
+            path,
+            contents,
+            line_count: _,
+            character_count: _,
+        } => plan_add(path, contents),
         FileHunk::Delete { path } => plan_delete(path),
         FileHunk::Update {
             path,
@@ -156,10 +161,17 @@ fn state_from_derived(
 )]
 pub(crate) fn hunk_context(hunk: &FileHunk) -> (OperationKind, PathBuf) {
     match hunk {
-        FileHunk::Add { path, .. } => (OperationKind::Add, path.clone()),
+        FileHunk::Add {
+            path,
+            contents: _,
+            line_count: _,
+            character_count: _,
+        } => (OperationKind::Add, path.clone()),
         FileHunk::Delete { path } => (OperationKind::Delete, path.clone()),
         FileHunk::Update {
-            path, move_path, ..
+            path,
+            move_path,
+            chunks: _,
         } => (
             OperationKind::Edit,
             move_path.clone().unwrap_or_else(|| path.clone()),

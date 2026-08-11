@@ -18,7 +18,7 @@ fn insertion_without_old_lines_precedes_logical_trailing_empty_line() {
     );
     assert_eq!(result.before_contents, DerivedText::Original);
     assert_eq!(result.applied_chunks, 1);
-    assert!(result.errors.is_empty());
+    assert_eq!(result.errors, Vec::<String>::new());
 }
 #[test]
 fn replacement_can_ignore_empty_lines_in_original() {
@@ -34,7 +34,7 @@ fn replacement_can_ignore_empty_lines_in_original() {
         DerivedText::Modified(String::from("updated\nc\n"))
     );
     assert_eq!(result.applied_chunks, 1);
-    assert!(result.errors.is_empty());
+    assert_eq!(result.errors, Vec::<String>::new());
 }
 #[test]
 fn replacement_can_ignore_consecutive_space_counts() {
@@ -50,7 +50,7 @@ fn replacement_can_ignore_consecutive_space_counts() {
         DerivedText::Modified(String::from("updated\n"))
     );
     assert_eq!(result.applied_chunks, 1);
-    assert!(result.errors.is_empty());
+    assert_eq!(result.errors, Vec::<String>::new());
 }
 #[test]
 fn replacements_are_applied_in_one_forward_pass() {

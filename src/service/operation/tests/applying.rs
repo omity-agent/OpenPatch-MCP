@@ -122,7 +122,7 @@ fn final_commit_failure_rolls_back_hunks_in_reverse_order() {
     );
     let applied = service.apply(&patch);
     assert!(!applied.succeeded());
-    assert!(uuids_from(&applied.render()).is_empty());
+    assert_eq!(uuids_from(&applied.render()), Vec::<String>::new());
     assert_eq!(fs::read_to_string(target).unwrap(), "one\n");
     let connection = service.history.lock_connection().unwrap();
     let operation_count: i64 = connection

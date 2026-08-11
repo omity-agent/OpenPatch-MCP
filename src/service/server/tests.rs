@@ -6,6 +6,8 @@ use rmcp::{
 };
 use std::fs;
 mod general;
+mod structured_result;
+use structured_result::{verify_failure, verify_success};
 #[derive(Clone, Default)]
 struct TestClient;
 #[expect(
@@ -100,100 +102,4 @@ async fn call_apply_patch(
         panic!("expected call tool result");
     };
     tool_result
-}
-fn verify_success(structured: &rmcp::serde_json::Value, target_path: &std::path::Path) {
-    let result = structured.as_object().unwrap();
-    assert_eq!(
-        result
-            .get("succeeded")
-            .and_then(rmcp::serde_json::Value::as_bool),
-        Some(true)
-    );
-    let success = result
-        .get("successes")
-        .unwrap()
-        .as_array()
-        .unwrap()
-        .first()
-        .unwrap()
-        .as_object()
-        .unwrap();
-    let mut success_fields = success.keys().map(String::as_str).collect::<Vec<_>>();
-    success_fields.sort_unstable();
-    assert_eq!(
-        success_fields,
-        ["after", "before", "kind", "path", "undoOf", "uuid"]
-    );
-    assert_eq!(
-        success
-            .get("kind")
-            .and_then(rmcp::serde_json::Value::as_str),
-        Some("EDIT")
-    );
-    assert_eq!(
-        success.get("path").unwrap().as_str().unwrap(),
-        target_path.display().to_string()
-    );
-    assert_eq!(
-        success
-            .get("before")
-            .unwrap()
-            .get("lineCount")
-            .unwrap()
-            .as_u64(),
-        Some(1)
-    );
-    assert_eq!(
-        success
-            .get("after")
-            .unwrap()
-            .get("lineCount")
-            .unwrap()
-            .as_u64(),
-        Some(1)
-    );
-    assert!(success.get("uuid").unwrap().is_string());
-    assert!(success.get("undoOf").unwrap().is_null());
-    assert!(
-        result
-            .get("failures")
-            .unwrap()
-            .as_array()
-            .unwrap()
-            .is_empty()
-    );
-}
-fn verify_failure(structured: &rmcp::serde_json::Value) {
-    let result = structured.as_object().unwrap();
-    assert_eq!(
-        result
-            .get("succeeded")
-            .and_then(rmcp::serde_json::Value::as_bool),
-        Some(false)
-    );
-    assert!(
-        result
-            .get("successes")
-            .unwrap()
-            .as_array()
-            .unwrap()
-            .is_empty()
-    );
-    let failure = result
-        .get("failures")
-        .unwrap()
-        .as_array()
-        .unwrap()
-        .first()
-        .unwrap()
-        .as_object()
-        .unwrap();
-    assert!(failure.get("operation").unwrap().is_null());
-    assert!(failure.get("undoUuid").unwrap().is_null());
-    assert_eq!(
-        failure
-            .get("reason")
-            .and_then(rmcp::serde_json::Value::as_str),
-        Some("patch must not be empty")
-    );
 }

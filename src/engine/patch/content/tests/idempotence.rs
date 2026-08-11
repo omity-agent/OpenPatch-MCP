@@ -15,7 +15,7 @@ fn already_applied_replacement_reconstructs_patch_before_contents() {
         DerivedText::Modified(String::from("old from patch\n"))
     );
     assert_eq!(result.applied_chunks, 1);
-    assert!(result.errors.is_empty());
+    assert_eq!(result.errors, Vec::<String>::new());
 }
 #[test]
 fn target_contents_must_match_exactly() {
@@ -44,7 +44,7 @@ fn exact_target_match_precedes_a_fuzzy_old_match() {
         DerivedText::Modified(String::from(" new \n"))
     );
     assert_eq!(result.applied_chunks, 1);
-    assert!(result.errors.is_empty());
+    assert_eq!(result.errors, Vec::<String>::new());
 }
 #[test]
 fn already_applied_eof_deletion_restores_old_lines_at_the_end() {
@@ -61,7 +61,7 @@ fn already_applied_eof_deletion_restores_old_lines_at_the_end() {
         DerivedText::Modified(String::from("kept\nremoved\n"))
     );
     assert_eq!(result.applied_chunks, 1);
-    assert!(result.errors.is_empty());
+    assert_eq!(result.errors, Vec::<String>::new());
 }
 #[test]
 fn mixed_update_reconstructs_full_before_and_after_contents() {
@@ -89,7 +89,7 @@ fn mixed_update_reconstructs_full_before_and_after_contents() {
         DerivedText::Modified(String::from("new one\nnew two\n"))
     );
     assert_eq!(result.applied_chunks, 2);
-    assert!(result.errors.is_empty());
+    assert_eq!(result.errors, Vec::<String>::new());
 }
 #[test]
 fn multiple_already_applied_insertions_are_reconstructed_in_patch_order() {
@@ -114,7 +114,7 @@ fn multiple_already_applied_insertions_are_reconstructed_in_patch_order() {
     );
     assert_eq!(result.contents, DerivedText::Original);
     assert_eq!(result.applied_chunks, 2);
-    assert!(result.errors.is_empty());
+    assert_eq!(result.errors, Vec::<String>::new());
 }
 #[test]
 fn insertion_target_in_the_middle_is_not_already_applied() {
@@ -131,5 +131,5 @@ fn insertion_target_in_the_middle_is_not_already_applied() {
         DerivedText::Modified(String::from("added\nkept\nadded\n"))
     );
     assert_eq!(result.applied_chunks, 1);
-    assert!(result.errors.is_empty());
+    assert_eq!(result.errors, Vec::<String>::new());
 }
