@@ -2,9 +2,10 @@ pub(crate) mod content;
 use crate::{
     operation::{
         files,
-        model::{FileState, Mutation, OperationKind},
+        model::{FileContents, FileState, Mutation, OperationKind},
     },
     parser::{FileHunk, UpdateChunk},
+    text::LineEndings,
 };
 use content::{DerivedText, derive_new_contents};
 use std::path::PathBuf;
@@ -75,10 +76,24 @@ fn plan_update(
             1,
         )
     } else {
-        let derived = derive_new_contents(original, chunks);
+        let line_endings = LineEndings::detect(original);
+        let normalized_original = LineEndings::normalize(original);
+        let derived = derive_new_contents(&normalized_original, chunks);
         (
-            state_from_derived(derived.before_contents, original),
-            state_from_derived(derived.contents, original),
+            state_from_derived(
+                derived.before_contents,
+                original,
+                line_endings,
+                false,
+                &normalized_original,
+            ),
+            state_from_derived(
+                derived.contents,
+                original,
+                line_endings,
+                true,
+                &normalized_original,
+            ),
             derived.errors,
             derived.applied_chunks,
         )
@@ -122,11 +137,17 @@ fn plan_update(
 }
 fn state_from_derived(
     derived: DerivedText,
-    original: &crate::operation::model::FileContents,
+    original: &FileContents,
+    line_endings: LineEndings,
+    normalize_mixed_original: bool,
+    normalized_original: &str,
 ) -> FileState {
     match derived {
-        DerivedText::Original => FileState::share(original),
-        DerivedText::Modified(modified) => FileState::present(modified),
+        DerivedText::Original if !normalize_mixed_original || !line_endings.is_mixed() => {
+            FileState::share(original)
+        }
+        DerivedText::Original => FileState::present(normalized_original.to_owned()),
+        DerivedText::Modified(modified) => FileState::present(line_endings.render(modified)),
     }
 }
 #[expect(

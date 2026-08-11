@@ -1,3 +1,4 @@
+use crate::text::LineEndings;
 use core::cmp::Reverse;
 use diffy::Line;
 #[derive(Debug, Clone)]
@@ -7,6 +8,14 @@ struct Change {
     new: Vec<String>,
 }
 pub(super) fn reverse_contents(before: &str, after: &str, current: &str) -> anyhow::Result<String> {
+    let line_endings = LineEndings::detect(current);
+    let normalized_before = LineEndings::normalize(before);
+    let normalized_after = LineEndings::normalize(after);
+    let normalized_current = LineEndings::normalize(current);
+    let reversed = reverse_normalized(&normalized_before, &normalized_after, &normalized_current)?;
+    Ok(line_endings.render(reversed))
+}
+fn reverse_normalized(before: &str, after: &str, current: &str) -> anyhow::Result<String> {
     if after == before {
         return Ok(current.to_owned());
     }
