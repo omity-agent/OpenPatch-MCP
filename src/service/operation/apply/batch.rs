@@ -1,7 +1,7 @@
 use super::{
     super::{
         OperationService, files,
-        model::{Mutation, OperationId},
+        model::{FileStates, Mutation, OperationId},
         output::{Failure, OperationOutput},
     },
     coalesce::{self, PlannedMutation},
@@ -11,7 +11,7 @@ use crate::parser::FileHunk;
 use rusqlite::{Savepoint, Transaction, TransactionBehavior};
 struct StagedMutation {
     mutation: Mutation,
-    observed: Vec<super::super::model::FileState>,
+    observed: FileStates,
     uuid: OperationId,
 }
 enum StageFailure {

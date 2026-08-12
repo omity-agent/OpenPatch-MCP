@@ -1,5 +1,6 @@
 use super::{FileState, Mutation, OperationKind, PlannedMutation, Workspace};
 use rustc_hash::FxHashSet;
+use smallvec::smallvec;
 struct OrderedMutation {
     planned: PlannedMutation,
     order: usize,
@@ -26,7 +27,7 @@ impl Workspace {
                         before,
                         file.current,
                     ),
-                    observed: vec![file.observed],
+                    observed: smallvec![file.observed],
                 },
                 order: file.first_order,
             });
@@ -71,7 +72,7 @@ impl Workspace {
                         destination_before.clone(),
                         destination.current.clone(),
                     ),
-                    observed: vec![destination.observed.clone(), source.observed.clone()],
+                    observed: smallvec![destination.observed.clone(), source.observed.clone()],
                 },
                 order: source.first_order.min(destination.first_order),
             });

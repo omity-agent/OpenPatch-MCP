@@ -4,6 +4,7 @@ use anyhow::Context as _;
 use core::time::Duration;
 use directories::ProjectDirs;
 use rusqlite::{Connection, OptionalExtension as _, params};
+use smallvec::SmallVec;
 use std::{
     path::{Path, PathBuf},
     sync::{Mutex, MutexGuard},
@@ -72,14 +73,16 @@ impl HistoryStore {
             undo_bytes,
         );
         connection
-            .execute(
+            .prepare_cached(
                 "INSERT INTO operations(uuid, kind, display_path, undo_of) VALUES (?1, ?2, ?3, ?4)",
-                operation_values,
             )
+            .and_then(|mut statement| statement.execute(operation_values))
             .with_context(|| {
                 format!("failed to write history database: {}", self.path.display())
             })?;
         let mut writer = content::Writer::new(connection);
+        let mut file_statement = connection
+            .prepare_cached("INSERT INTO operation_files VALUES (?1, ?2, ?3, ?4, ?5, ?6)")?;
         for (ordinal, change) in mutation.changes.iter().enumerate() {
             let ordinal_value =
                 i64::try_from(ordinal).context("too many paths in one operation")?;
@@ -95,10 +98,7 @@ impl HistoryStore {
                 before.as_ref().map(<[u8; blake3::OUT_LEN]>::as_slice),
                 after.as_ref().map(<[u8; blake3::OUT_LEN]>::as_slice),
             );
-            connection.execute(
-                "INSERT INTO operation_files VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                file_values,
-            )?;
+            file_statement.execute(file_values)?;
         }
         Ok(uuid)
     }
@@ -111,7 +111,7 @@ impl HistoryStore {
              FROM operation_files WHERE operation_uuid = ?1 ORDER BY ordinal",
         )?;
         let mut rows = statement.query(params![id.as_bytes()])?;
-        let mut changes = Vec::new();
+        let mut changes = SmallVec::new();
         let mut reader = content::Reader::new(connection);
         while let Some(row) = rows.next()? {
             changes.push(PathChange {
@@ -123,6 +123,9 @@ impl HistoryStore {
         }
         if changes.is_empty() {
             anyhow::bail!("operation history contains no file states");
+        }
+        if changes.len() > 2 {
+            anyhow::bail!("operation history contains too many file states");
         }
         Ok(StoredOperation { changes })
     }

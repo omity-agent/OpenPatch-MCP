@@ -6,6 +6,7 @@ use super::{
     output::{Failure, OperationOutput, Success},
 };
 use rusqlite::TransactionBehavior;
+use smallvec::smallvec;
 pub(super) fn execute(service: &OperationService, uuid_texts: &[String]) -> OperationOutput {
     if uuid_texts.is_empty() {
         return OperationOutput::failed(String::from("uuids must not be empty"));
@@ -116,7 +117,7 @@ fn plan_move(stored: &StoredOperation) -> anyhow::Result<Mutation> {
     Ok(Mutation {
         kind: OperationKind::Edit,
         display_path: source.path.clone(),
-        changes: vec![
+        changes: smallvec![
             PathChange {
                 role: PathRole::Destination,
                 path: source.path.clone(),

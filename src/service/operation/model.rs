@@ -2,6 +2,7 @@ mod file;
 use anyhow::Context as _;
 use core::fmt;
 pub(crate) use file::{FileContents, FileState};
+use smallvec::{SmallVec, smallvec};
 use std::path::PathBuf;
 use uuid::Uuid;
 use uuid_simd::UuidExt;
@@ -82,11 +83,13 @@ pub(crate) struct PathChange {
     pub(super) before: FileState,
     pub(super) after: FileState,
 }
+pub(super) type PathChanges = SmallVec<[PathChange; 2]>;
+pub(super) type FileStates = SmallVec<[FileState; 2]>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Mutation {
     pub(super) kind: OperationKind,
     pub(super) display_path: PathBuf,
-    pub(super) changes: Vec<PathChange>,
+    pub(super) changes: PathChanges,
 }
 impl Mutation {
     pub(crate) fn single(
@@ -98,7 +101,7 @@ impl Mutation {
         Self {
             kind,
             display_path: path.clone(),
-            changes: vec![PathChange {
+            changes: smallvec![PathChange {
                 role: PathRole::Single,
                 path,
                 before,
@@ -116,7 +119,7 @@ impl Mutation {
         Self {
             kind: OperationKind::Edit,
             display_path: destination.clone(),
-            changes: vec![
+            changes: smallvec![
                 PathChange {
                     role: PathRole::Destination,
                     path: destination,
@@ -141,7 +144,7 @@ impl Mutation {
 }
 #[derive(Debug, Clone)]
 pub(super) struct StoredOperation {
-    pub(super) changes: Vec<PathChange>,
+    pub(super) changes: PathChanges,
 }
 impl StoredOperation {
     pub(super) fn change(&self, role: PathRole) -> anyhow::Result<&PathChange> {

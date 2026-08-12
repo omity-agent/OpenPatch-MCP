@@ -1,6 +1,6 @@
 use super::super::{
     files,
-    model::{FileState, Mutation, OperationKind, PathRole},
+    model::{FileState, FileStates, Mutation, OperationKind, PathRole},
 };
 use crate::parser::FileHunk;
 use rustc_hash::FxHashMap;
@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 mod finalize;
 pub(super) struct PlannedMutation {
     pub(super) mutation: Mutation,
-    pub(super) observed: Vec<FileState>,
+    pub(super) observed: FileStates,
 }
 pub(super) struct PlanningFailure {
     pub(super) kind: OperationKind,

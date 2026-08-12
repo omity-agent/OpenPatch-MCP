@@ -1,5 +1,6 @@
 use super::model::{FileState, Mutation};
 use atomic_write_file::AtomicWriteFile;
+use smallvec::SmallVec;
 use std::{
     fs,
     io::{self, BufRead as _, Write as _},
@@ -17,12 +18,12 @@ pub(super) fn apply(mutation: &Mutation) -> anyhow::Result<()> {
         .changes
         .iter()
         .map(|change| &change.before)
-        .collect::<Vec<_>>();
+        .collect::<SmallVec<[_; 2]>>();
     apply_from(mutation, &states)
 }
 pub(super) fn apply_observed(mutation: &Mutation, observed: &[FileState]) -> anyhow::Result<()> {
     ensure_state_count(mutation, observed)?;
-    let states = observed.iter().collect::<Vec<_>>();
+    let states = observed.iter().collect::<SmallVec<[_; 2]>>();
     apply_from(mutation, &states)
 }
 pub(super) fn roll_back(mutation: &Mutation) -> anyhow::Result<()> {
@@ -30,7 +31,7 @@ pub(super) fn roll_back(mutation: &Mutation) -> anyhow::Result<()> {
         .changes
         .iter()
         .map(|change| &change.before)
-        .collect::<Vec<_>>();
+        .collect::<SmallVec<[_; 2]>>();
     restore_states(mutation, &states, mutation.changes.len())
 }
 pub(super) fn roll_back_observed(
@@ -38,7 +39,7 @@ pub(super) fn roll_back_observed(
     observed: &[FileState],
 ) -> anyhow::Result<()> {
     ensure_state_count(mutation, observed)?;
-    let states = observed.iter().collect::<Vec<_>>();
+    let states = observed.iter().collect::<SmallVec<[_; 2]>>();
     restore_states(mutation, &states, mutation.changes.len())
 }
 fn apply_from(mutation: &Mutation, states: &[&FileState]) -> anyhow::Result<()> {
@@ -119,7 +120,7 @@ fn restore_states(
     states: &[&FileState],
     change_count: usize,
 ) -> anyhow::Result<()> {
-    let mut errors = Vec::new();
+    let mut errors = SmallVec::<[String; 2]>::new();
     for (change, original) in mutation.changes.iter().zip(states).take(change_count).rev() {
         if **original == change.after {
             continue;

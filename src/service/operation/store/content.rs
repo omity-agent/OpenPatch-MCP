@@ -1,18 +1,19 @@
 use crate::operation::model::FileState;
 use anyhow::Context as _;
 use rusqlite::{Connection, OptionalExtension as _, params};
+use smallvec::SmallVec;
 const RAW_CODEC: i64 = 0;
 const LZ4_CODEC: i64 = 1;
 type Digest = [u8; blake3::OUT_LEN];
 pub(super) struct Writer<'transaction, 'content> {
     connection: &'transaction Connection,
-    seen: Vec<(Digest, &'content str)>,
+    seen: SmallVec<[(Digest, &'content str); 4]>,
 }
 impl<'transaction, 'content> Writer<'transaction, 'content> {
-    pub(super) const fn new(connection: &'transaction Connection) -> Self {
+    pub(super) fn new(connection: &'transaction Connection) -> Self {
         Self {
             connection,
-            seen: Vec::new(),
+            seen: SmallVec::new(),
         }
     }
     pub(super) fn store(&mut self, state: &'content FileState) -> anyhow::Result<Option<Digest>> {
@@ -52,11 +53,13 @@ impl Encoded {
     fn new(contents: &str, digest: Digest) -> anyhow::Result<Self> {
         let bytes = contents.as_bytes();
         let raw_len = i64::try_from(bytes.len()).context("history content is too large")?;
-        let compressed = lz4_flex::block::compress(bytes);
-        let (codec, payload) = if compressed.len() < bytes.len() {
-            (LZ4_CODEC, compressed)
+        let mut payload = lz4_flex::block::compress(bytes);
+        let codec = if payload.len() < bytes.len() {
+            LZ4_CODEC
         } else {
-            (RAW_CODEC, bytes.to_vec())
+            payload.clear();
+            payload.extend_from_slice(bytes);
+            RAW_CODEC
         };
         Ok(Self {
             digest,
@@ -66,16 +69,17 @@ impl Encoded {
         })
     }
     fn insert(&self, connection: &Connection, contents: &str) -> anyhow::Result<()> {
-        let inserted = connection.execute(
-            "INSERT INTO history_blobs(digest, raw_len, codec, payload)
-             VALUES (?1, ?2, ?3, ?4) ON CONFLICT(digest) DO NOTHING",
-            params![
+        let inserted = connection
+            .prepare_cached(
+                "INSERT INTO history_blobs(digest, raw_len, codec, payload)
+                 VALUES (?1, ?2, ?3, ?4) ON CONFLICT(digest) DO NOTHING",
+            )?
+            .execute(params![
                 self.digest.as_slice(),
                 self.raw_len,
                 self.codec,
                 self.payload
-            ],
-        )?;
+            ])?;
         if inserted == 0 {
             let existing = load(connection, self.digest)?;
             anyhow::ensure!(
@@ -88,13 +92,13 @@ impl Encoded {
 }
 pub(super) struct Reader<'connection> {
     connection: &'connection Connection,
-    seen: Vec<(Digest, FileState)>,
+    seen: SmallVec<[(Digest, FileState); 4]>,
 }
 impl<'connection> Reader<'connection> {
-    pub(super) const fn new(connection: &'connection Connection) -> Self {
+    pub(super) fn new(connection: &'connection Connection) -> Self {
         Self {
             connection,
-            seen: Vec::new(),
+            seen: SmallVec::new(),
         }
     }
     pub(super) fn load(&mut self, stored_digest: Option<Vec<u8>>) -> anyhow::Result<FileState> {
@@ -121,17 +125,14 @@ fn load(connection: &Connection, digest: Digest) -> anyhow::Result<String> {
 }
 fn load_optional(connection: &Connection, digest: Digest) -> anyhow::Result<Option<String>> {
     connection
-        .query_row(
-            "SELECT raw_len, codec, payload FROM history_blobs WHERE digest = ?1",
-            [digest.as_slice()],
-            |row| {
-                Ok(Stored {
-                    raw_len: row.get(0)?,
-                    codec: row.get(1)?,
-                    payload: row.get(2)?,
-                })
-            },
-        )
+        .prepare_cached("SELECT raw_len, codec, payload FROM history_blobs WHERE digest = ?1")?
+        .query_row([digest.as_slice()], |row| {
+            Ok(Stored {
+                raw_len: row.get(0)?,
+                codec: row.get(1)?,
+                payload: row.get(2)?,
+            })
+        })
         .optional()?
         .map(|stored| stored.decode(digest))
         .transpose()
@@ -153,7 +154,15 @@ impl Stored {
                 );
                 self.payload
             }
-            LZ4_CODEC => decompress(&self.payload, raw_len)?,
+            LZ4_CODEC => {
+                let decompressed = lz4_flex::block::decompress(&self.payload, raw_len)
+                    .context("failed to decompress operation history content")?;
+                anyhow::ensure!(
+                    decompressed.len() == raw_len,
+                    "decompressed operation history content has an invalid length"
+                );
+                decompressed
+            }
             codec => anyhow::bail!("unknown operation history content codec: {codec}"),
         };
         anyhow::ensure!(
@@ -162,20 +171,6 @@ impl Stored {
         );
         String::from_utf8(bytes).context("operation history content is not valid UTF-8")
     }
-}
-fn decompress(payload: &[u8], raw_len: usize) -> anyhow::Result<Vec<u8>> {
-    let mut output = Vec::new();
-    output
-        .try_reserve_exact(raw_len)
-        .context("failed to allocate decompressed operation history content")?;
-    output.resize(raw_len, 0);
-    let written = lz4_flex::block::decompress_into(payload, &mut output)
-        .context("failed to decompress operation history content")?;
-    anyhow::ensure!(
-        written == raw_len,
-        "decompressed operation history content has an invalid length"
-    );
-    Ok(output)
 }
 pub(super) fn delete_unreferenced(connection: &Connection) -> anyhow::Result<()> {
     connection.execute(
