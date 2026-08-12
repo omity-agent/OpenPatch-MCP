@@ -1,4 +1,5 @@
 mod batch;
+mod coalesce;
 use super::{
     OperationService,
     model::{Mutation, OperationId, OperationKind, PathRole},

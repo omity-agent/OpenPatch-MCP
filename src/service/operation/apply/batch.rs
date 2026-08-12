@@ -1,26 +1,22 @@
 use super::{
     super::{
         OperationService, files,
-        model::{FileState, Mutation, OperationId, OperationKind},
+        model::{Mutation, OperationId},
         output::{Failure, OperationOutput},
     },
+    coalesce::{self, PlannedMutation},
     success,
 };
 use crate::parser::FileHunk;
 use rusqlite::{Savepoint, Transaction, TransactionBehavior};
-struct StagedHunk {
+struct StagedMutation {
     mutation: Mutation,
-    observed: Vec<FileState>,
+    observed: Vec<super::super::model::FileState>,
     uuid: OperationId,
 }
 enum StageFailure {
-    Hunk(anyhow::Error),
+    Mutation(anyhow::Error),
     Fatal(anyhow::Error),
-}
-impl From<anyhow::Error> for StageFailure {
-    fn from(error: anyhow::Error) -> Self {
-        Self::Hunk(error)
-    }
 }
 pub(super) fn execute(service: &OperationService, hunks: Vec<FileHunk>) -> OperationOutput {
     let mut output = OperationOutput::default();
@@ -39,29 +35,32 @@ pub(super) fn execute(service: &OperationService, hunks: Vec<FileHunk>) -> Opera
             return output;
         }
     };
+    let plan = coalesce::plan(hunks);
+    for failure in plan.failures {
+        output.push_failure(Failure::file(failure.kind, failure.path, failure.reason));
+    }
+    if plan.eliminated_all {
+        output.push_failure(Failure::global(String::from(
+            "No effective file operations remained after merging.",
+        )));
+    }
     let mut staged = Vec::new();
-    let mut remaining = hunks.into_iter();
-    while let Some(hunk) = remaining.next() {
-        let failure_context = crate::patch::hunk_context(&hunk);
-        match stage_hunk(service, &mut transaction, hunk, &mut output) {
-            Ok(Some(applied)) => staged.push(applied),
-            Ok(None) => {}
-            Err(StageFailure::Hunk(error)) => output.push_failure(Failure::file(
-                failure_context.0,
-                failure_context.1,
-                error.to_string(),
-            )),
+    let mut remaining = plan.mutations.into_iter();
+    while let Some(planned) = remaining.next() {
+        let kind = planned.mutation.kind;
+        let path = planned.mutation.display_path.clone();
+        match stage_mutation(service, &mut transaction, planned) {
+            Ok(applied) => staged.push(applied),
+            Err(StageFailure::Mutation(error)) => {
+                output.push_failure(Failure::file(kind, path, error.to_string()));
+            }
             Err(StageFailure::Fatal(error)) => {
-                output.push_failure(Failure::file(
-                    failure_context.0,
-                    failure_context.1,
-                    error.to_string(),
-                ));
+                output.push_failure(Failure::file(kind, path, error.to_string()));
                 drop(transaction);
                 drop(connection);
                 fail_staged(&mut output, &staged, &error);
                 let reason = format!("Operation batch aborted: {error}");
-                push_hunk_failures(&mut output, remaining.as_slice(), &reason);
+                push_mutation_failures(&mut output, remaining.as_slice(), &reason);
                 return output;
             }
         }
@@ -87,39 +86,23 @@ pub(super) fn execute(service: &OperationService, hunks: Vec<FileHunk>) -> Opera
     }
     output
 }
-fn stage_hunk(
+fn stage_mutation(
     service: &OperationService,
     transaction: &mut Transaction<'_>,
-    hunk: FileHunk,
-    output: &mut OperationOutput,
-) -> Result<Option<StagedHunk>, StageFailure> {
-    let planned = crate::patch::plan_hunk(hunk)?;
-    let failure_path = planned
-        .mutation
-        .as_ref()
-        .map(|mutation| mutation.display_path.clone());
-    for reason in planned.chunk_errors {
-        let path = failure_path
-            .clone()
-            .unwrap_or_else(|| std::path::PathBuf::from("<unknown>"));
-        output.push_failure(Failure::file(OperationKind::Edit, path, reason));
-    }
-    let Some(mutation) = planned.mutation else {
-        return Ok(None);
-    };
-    let observed = planned.observed;
+    planned: PlannedMutation,
+) -> Result<StagedMutation, StageFailure> {
     let savepoint = transaction
         .savepoint()
         .map_err(|error| StageFailure::Fatal(error.into()))?;
-    let uuid = match service.history.insert(&savepoint, &mutation, None) {
+    let uuid = match service.history.insert(&savepoint, &planned.mutation, None) {
         Ok(uuid) => uuid,
         Err(error) => return finish_failed_savepoint(savepoint, error),
     };
-    if let Err(error) = files::apply_observed(&mutation, &observed) {
+    if let Err(error) = files::apply_observed(&planned.mutation, &planned.observed) {
         return finish_failed_savepoint(savepoint, error);
     }
     if let Err(error) = savepoint.commit() {
-        let rollback = files::roll_back_observed(&mutation, &observed);
+        let rollback = files::roll_back_observed(&planned.mutation, &planned.observed);
         let fatal = match rollback {
             Ok(()) => error.into(),
             Err(rollback_error) => anyhow::anyhow!(
@@ -128,24 +111,24 @@ fn stage_hunk(
         };
         return Err(StageFailure::Fatal(fatal));
     }
-    Ok(Some(StagedHunk {
-        mutation,
-        observed,
+    Ok(StagedMutation {
+        mutation: planned.mutation,
+        observed: planned.observed,
         uuid,
-    }))
+    })
 }
 fn finish_failed_savepoint<T>(
     savepoint: Savepoint<'_>,
     error: anyhow::Error,
 ) -> Result<T, StageFailure> {
     match savepoint.finish() {
-        Ok(()) => Err(StageFailure::Hunk(error)),
+        Ok(()) => Err(StageFailure::Mutation(error)),
         Err(rollback_error) => Err(StageFailure::Fatal(anyhow::anyhow!(
             "{error}; failed to roll back history savepoint: {rollback_error}"
         ))),
     }
 }
-fn fail_staged(output: &mut OperationOutput, staged: &[StagedHunk], error: &anyhow::Error) {
+fn fail_staged(output: &mut OperationOutput, staged: &[StagedMutation], error: &anyhow::Error) {
     let mut rollback_errors = Vec::new();
     for applied in staged.iter().rev() {
         if let Err(rollback_error) = files::roll_back_observed(&applied.mutation, &applied.observed)
@@ -176,5 +159,18 @@ fn push_hunk_failures(output: &mut OperationOutput, hunks: &[FileHunk], reason: 
     for hunk in hunks {
         let (kind, path) = crate::patch::hunk_context(hunk);
         output.push_failure(Failure::file(kind, path, reason.to_owned()));
+    }
+}
+fn push_mutation_failures(
+    output: &mut OperationOutput,
+    mutations: &[PlannedMutation],
+    reason: &str,
+) {
+    for planned in mutations {
+        output.push_failure(Failure::file(
+            planned.mutation.kind,
+            planned.mutation.display_path.clone(),
+            reason.to_owned(),
+        ));
     }
 }

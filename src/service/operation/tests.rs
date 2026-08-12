@@ -5,6 +5,7 @@ use super::{
 use rusqlite::TransactionBehavior;
 use std::fs;
 mod applying;
+mod coalescing;
 mod line_endings;
 mod replacement;
 mod validation;

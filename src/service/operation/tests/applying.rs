@@ -54,7 +54,7 @@ fn already_applied_add_can_be_undone_to_a_missing_file() {
     assert!(undone.render().contains("<DELETE>"));
 }
 #[test]
-fn multiple_hunks_on_one_file_keep_independent_undo_history() {
+fn multiple_hunks_on_one_file_share_one_undo_history_entry() {
     let directory = tempfile::tempdir().unwrap();
     let target = directory.path().join("target.txt");
     fs::write(&target, "one\n").unwrap();
@@ -67,12 +67,9 @@ fn multiple_hunks_on_one_file_keep_independent_undo_history() {
     let applied = service.apply(&patch);
     assert!(applied.succeeded(), "{}", applied.render());
     assert_eq!(fs::read_to_string(&target).unwrap(), "three\n");
-    let [first_uuid, second_uuid] = two_uuids(&applied.render());
-    let undone_second = service.undo(core::slice::from_ref(&second_uuid));
-    assert!(undone_second.succeeded(), "{}", undone_second.render());
-    assert_eq!(fs::read_to_string(&target).unwrap(), "two\n");
-    let undone_first = service.undo(core::slice::from_ref(&first_uuid));
-    assert!(undone_first.succeeded(), "{}", undone_first.render());
+    assert_eq!(uuids_from(&applied.render()).len(), 1);
+    let undone = service.undo(&[uuid_from(&applied.render())]);
+    assert!(undone.succeeded(), "{}", undone.render());
     assert_eq!(fs::read_to_string(target).unwrap(), "one\n");
 }
 #[test]
