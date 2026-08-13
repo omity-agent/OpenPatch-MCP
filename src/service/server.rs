@@ -85,7 +85,7 @@ impl Application {
     }
 }
 fn add_apply_route(router: &mut ToolRouter<Application>, style: InputStyle) -> anyhow::Result<()> {
-    match style { InputStyle :: General => router . add_route (ToolRoute :: new (apply_tool :: < ReplaceRequest > ("Replace old_string in path with new_string using exact and fuzzy matching. Each edit is assigned a UUID." ,) ? , Application :: apply_general ,)) , InputStyle :: Openai => router . add_route (ToolRoute :: new (apply_tool :: < ApplyPatchRequest > ("The `apply_patch` tool can be used to edit files. Each patch will be assigned a UUID. This is a FREEFORM tool, so do not wrap the patch in JSON." ,) ? , Application :: apply_openai ,)) , }
+    match style { InputStyle :: General => router . add_route (ToolRoute :: new (apply_tool :: < ReplaceRequest > ("Replace an exact string in a file. Each edit is assigned a UUID." ,) ? , Application :: apply_general ,)) , InputStyle :: Openai => router . add_route (ToolRoute :: new (apply_tool :: < ApplyPatchRequest > ("The `apply_patch` tool can be used to edit files. Each patch will be assigned a UUID. This is a FREEFORM tool, so do not wrap the patch in JSON." ,) ? , Application :: apply_openai ,)) , }
     Ok(())
 }
 fn apply_tool<Request>(description: &'static str) -> anyhow::Result<Tool>
