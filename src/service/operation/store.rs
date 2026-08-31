@@ -1,88 +1,51 @@
 use super::model::{Mutation, OperationId, PathChange, PathRole, StoredOperation};
 use alloc::sync::Arc;
 use anyhow::Context as _;
-use core::time::Duration;
-use directories::ProjectDirs;
-use rusqlite::{Connection, OptionalExtension as _, params};
-use smallvec::SmallVec;
-use std::{
-    path::{Path, PathBuf},
-    sync::{Mutex, MutexGuard},
+use diesel::{
+    OptionalExtension as _, RunQueryDsl as _,
+    sql_types::{BigInt, Binary, Nullable},
+    sqlite::SqliteConnection,
 };
+use smallvec::SmallVec;
+use std::{path::PathBuf, sync::Mutex};
+mod codec;
+mod connection;
 mod content;
 mod ordering;
 mod path;
+pub(crate) mod rows;
 mod schema;
 #[cfg(test)]
+#[path = "../../../test/service/store.rs"]
 mod tests;
+pub(crate) use connection::roll_back_transaction;
 pub(super) use ordering::for_undo;
 const RETAINED_OPERATIONS: i64 = 1000;
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(super) struct HistoryStore {
     path: PathBuf,
-    connection: Arc<Mutex<Connection>>,
+    connection: Arc<Mutex<SqliteConnection>>,
 }
 impl HistoryStore {
-    pub(super) fn open_default() -> anyhow::Result<Self> {
-        let directories = ProjectDirs::from("", "", env!("CARGO_PKG_NAME"))
-            .context("failed to locate the user application data directory")?;
-        Self::open(&directories.data_local_dir().join("history.sqlite3"))
-    }
-    pub(super) fn open(path: &Path) -> anyhow::Result<Self> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).with_context(|| {
-                format!("failed to create history directory: {}", parent.display())
-            })?;
-        }
-        let mut connection = Connection::open(path)?;
-        connection.busy_timeout(Duration::from_secs(30))?;
-        let mode: String =
-            connection.pragma_update_and_check(None, "journal_mode", "WAL", |row| row.get(0))?;
-        if !mode.eq_ignore_ascii_case("wal") {
-            anyhow::bail!("failed to enable SQLite WAL mode");
-        }
-        connection.pragma_update(None, "synchronous", "FULL")?;
-        connection.pragma_update(None, "foreign_keys", true)?;
-        schema::initialize(&mut connection)?;
-        Ok(Self {
-            path: path.into(),
-            connection: Arc::new(Mutex::new(connection)),
-        })
-    }
-    pub(super) fn lock_connection(&self) -> anyhow::Result<MutexGuard<'_, Connection>> {
-        self.connection.lock().map_err(|error| {
-            anyhow::anyhow!(
-                "operation history connection lock is poisoned for {}: {error}",
-                self.path.display(),
-            )
-        })
-    }
     pub(super) fn insert(
         &self,
-        connection: &Connection,
+        connection: &mut SqliteConnection,
         mutation: &Mutation,
         undo_of: Option<OperationId>,
     ) -> anyhow::Result<OperationId> {
         let uuid = OperationId::now_v7();
         let undo_bytes = undo_of.map(|value| value.as_bytes().to_vec());
         let display_path = path::encode(&mutation.display_path);
-        let operation_values = (
-            uuid.as_bytes(),
-            mutation.kind.code(),
-            display_path,
-            undo_bytes,
-        );
-        connection
-            .prepare_cached(
-                "INSERT INTO operations(uuid, kind, display_path, undo_of) VALUES (?1, ?2, ?3, ?4)",
-            )
-            .and_then(|mut statement| statement.execute(operation_values))
-            .with_context(|| {
-                format!("failed to write history database: {}", self.path.display())
-            })?;
+        diesel::sql_query(
+            "INSERT INTO operations(uuid, kind, display_path, undo_of) VALUES (?, ?, ?, ?)",
+        )
+        .bind::<Binary, _>(uuid.as_bytes().as_slice())
+        .bind::<BigInt, _>(mutation.kind.code())
+        .bind::<Binary, _>(display_path)
+        .bind::<Nullable<Binary>, _>(undo_bytes)
+        .execute(connection)
+        .with_context(|| format!("failed to write history database: {}", self.path.display()))?;
         let mut writer = content::Writer::new(connection);
-        let mut file_statement = connection
-            .prepare_cached("INSERT INTO operation_files VALUES (?1, ?2, ?3, ?4, ?5, ?6)")?;
         for (ordinal, change) in mutation.changes.iter().enumerate() {
             let ordinal_value =
                 i64::try_from(ordinal).context("too many paths in one operation")?;
@@ -90,35 +53,35 @@ impl HistoryStore {
             let after = writer.store(&change.after)?;
             let role = change.role.code();
             let path = path::encode(&change.path);
-            let file_values = (
-                uuid.as_bytes(),
-                ordinal_value,
-                role,
-                path,
-                before.as_ref().map(<[u8; blake3::OUT_LEN]>::as_slice),
-                after.as_ref().map(<[u8; blake3::OUT_LEN]>::as_slice),
-            );
-            file_statement.execute(file_values)?;
+            diesel::sql_query("INSERT INTO operation_files VALUES (?, ?, ?, ?, ?, ?)")
+                .bind::<Binary, _>(uuid.as_bytes().as_slice())
+                .bind::<BigInt, _>(ordinal_value)
+                .bind::<BigInt, _>(role)
+                .bind::<Binary, _>(path)
+                .bind::<Nullable<Binary>, _>(before.map(Vec::from))
+                .bind::<Nullable<Binary>, _>(after.map(Vec::from))
+                .execute(writer.connection())?;
         }
         Ok(uuid)
     }
     pub(super) fn load(
-        connection: &Connection,
+        connection: &mut SqliteConnection,
         id: OperationId,
     ) -> anyhow::Result<StoredOperation> {
-        let mut statement = connection.prepare(
+        let rows = diesel::sql_query(
             "SELECT role, path, before_digest, after_digest
-             FROM operation_files WHERE operation_uuid = ?1 ORDER BY ordinal",
-        )?;
-        let mut rows = statement.query(params![id.as_bytes()])?;
+             FROM operation_files WHERE operation_uuid = ? ORDER BY ordinal",
+        )
+        .bind::<Binary, _>(id.as_bytes().as_slice())
+        .load::<rows::StoredFile>(connection)?;
         let mut changes = SmallVec::new();
         let mut reader = content::Reader::new(connection);
-        while let Some(row) = rows.next()? {
+        for row in rows {
             changes.push(PathChange {
-                role: PathRole::from_code(row.get(0)?)?,
-                path: path::decode(&row.get::<_, Vec<u8>>(1)?)?,
-                before: reader.load(row.get(2)?)?,
-                after: reader.load(row.get(3)?)?,
+                role: PathRole::from_code(row.role)?,
+                path: path::decode(&row.path)?,
+                before: reader.load(row.before_digest)?,
+                after: reader.load(row.after_digest)?,
             });
         }
         if changes.is_empty() {
@@ -131,21 +94,18 @@ impl HistoryStore {
     }
     pub(super) fn ensure_available(
         &self,
-        connection: &Connection,
+        connection: &mut SqliteConnection,
         id: OperationId,
     ) -> anyhow::Result<()> {
-        let record_undone_by = connection
-            .query_row(
-                "SELECT undone_by FROM operations WHERE uuid = ?1",
-                params![id.as_bytes()],
-                |row| row.get::<_, Option<Vec<u8>>>(0),
-            )
+        let record = diesel::sql_query("SELECT undone_by FROM operations WHERE uuid = ?")
+            .bind::<Binary, _>(id.as_bytes().as_slice())
+            .get_result::<rows::UndoneBy>(connection)
             .optional()
             .with_context(|| format!("failed to read history database: {}", self.path.display()))?;
-        let Some(undone_by) = record_undone_by else {
+        let Some(availability) = record else {
             anyhow::bail!("unknown operation UUID: {id}");
         };
-        if let Some(bytes) = undone_by {
+        if let Some(bytes) = availability.undone_by {
             let undo_uuid = OperationId::from_slice(&bytes)?;
             anyhow::bail!("operation UUID {id} was already undone by {undo_uuid}");
         }
@@ -153,31 +113,31 @@ impl HistoryStore {
     }
     pub(super) fn consume_and_insert(
         &self,
-        connection: &Connection,
+        connection: &mut SqliteConnection,
         target: OperationId,
         mutation: &Mutation,
     ) -> anyhow::Result<OperationId> {
         let uuid = self.insert(connection, mutation, Some(target))?;
-        let updated = connection.execute(
-            "UPDATE operations SET undone_by = ?1 WHERE uuid = ?2 AND undone_by IS NULL",
-            params![uuid.as_bytes(), target.as_bytes()],
-        )?;
+        let updated = diesel::sql_query(
+            "UPDATE operations SET undone_by = ? WHERE uuid = ? AND undone_by IS NULL",
+        )
+        .bind::<Binary, _>(uuid.as_bytes().as_slice())
+        .bind::<Binary, _>(target.as_bytes().as_slice())
+        .execute(connection)?;
         if updated != 1 {
             anyhow::bail!("operation UUID {target} was consumed concurrently");
         }
         Ok(uuid)
     }
-    pub(super) fn prune(&self, connection: &Connection) -> anyhow::Result<()> {
-        let deleted = connection
-            .execute(
-                "DELETE FROM operations WHERE sequence IN (
+    pub(super) fn prune(&self, connection: &mut SqliteConnection) -> anyhow::Result<()> {
+        let deleted = diesel::sql_query(
+            "DELETE FROM operations WHERE sequence IN (
                 SELECT sequence FROM operations ORDER BY sequence DESC LIMIT -1 OFFSET ?1
             )",
-                [RETAINED_OPERATIONS],
-            )
-            .with_context(|| {
-                format!("failed to prune history database: {}", self.path.display())
-            })?;
+        )
+        .bind::<BigInt, _>(RETAINED_OPERATIONS)
+        .execute(connection)
+        .with_context(|| format!("failed to prune history database: {}", self.path.display()))?;
         if deleted != 0 {
             content::delete_unreferenced(connection)?;
         }

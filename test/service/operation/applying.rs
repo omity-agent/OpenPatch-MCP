@@ -1,4 +1,6 @@
 use super::{service, uuid_from};
+use crate::operation::store::rows::IntegerValue;
+use diesel::{RunQueryDsl as _, connection::SimpleConnection as _};
 use std::fs;
 fn uuids_from(output: &str) -> Vec<String> {
     output
@@ -102,9 +104,9 @@ fn final_commit_failure_rolls_back_hunks_in_reverse_order() {
     fs::write(&target, "one\n").unwrap();
     let service = service(&directory);
     {
-        let connection = service.history.lock_connection().unwrap();
+        let mut connection = service.history.lock_connection().unwrap();
         connection
-            .execute_batch(
+            .batch_execute(
                 "CREATE TRIGGER force_deferred_failure AFTER INSERT ON operations BEGIN
                  INSERT INTO operation_files VALUES(randomblob(16), -1, 0, X'', NULL, NULL);
                  END;
@@ -121,10 +123,11 @@ fn final_commit_failure_rolls_back_hunks_in_reverse_order() {
     assert!(!applied.succeeded());
     assert_eq!(uuids_from(&applied.render()), Vec::<String>::new());
     assert_eq!(fs::read_to_string(target).unwrap(), "one\n");
-    let connection = service.history.lock_connection().unwrap();
-    let operation_count: i64 = connection
-        .query_row("SELECT COUNT(*) FROM operations", [], |row| row.get(0))
-        .unwrap();
+    let mut connection = service.history.lock_connection().unwrap();
+    let operation_count = diesel::sql_query("SELECT COUNT(*) AS value FROM operations")
+        .get_result::<IntegerValue>(&mut *connection)
+        .unwrap()
+        .value;
     drop(connection);
     assert_eq!(operation_count, 0);
 }

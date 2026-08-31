@@ -36,12 +36,7 @@ async fn replaces_a_string() {
 }
 fn verify_replacement_success(structured: &rmcp::serde_json::Value, target_path: &Path) {
     let result = structured.as_object().unwrap();
-    assert_eq!(
-        result
-            .get("succeeded")
-            .and_then(rmcp::serde_json::Value::as_bool),
-        Some(true)
-    );
+    assert_eq!(result.get("succeeded").unwrap().as_bool(), Some(true));
     let success = result
         .get("successes")
         .unwrap()
@@ -49,12 +44,7 @@ fn verify_replacement_success(structured: &rmcp::serde_json::Value, target_path:
         .unwrap()
         .first()
         .unwrap();
-    assert_eq!(
-        success
-            .get("kind")
-            .and_then(rmcp::serde_json::Value::as_str),
-        Some("EDIT")
-    );
+    assert_eq!(success.get("kind").unwrap().as_str(), Some("EDIT"));
     assert_eq!(
         success.get("path").unwrap().as_str().unwrap(),
         target_path.display().to_string()

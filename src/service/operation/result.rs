@@ -1,3 +1,4 @@
+#[path = "structured_result.rs"]
 mod structured;
 use super::model::{OperationId, OperationKind};
 use core::fmt::Write as _;

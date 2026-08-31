@@ -125,4 +125,5 @@ fn split_lines(contents: &str) -> LineAnalysis<'_> {
     LineAnalysis { lines, offsets }
 }
 #[cfg(test)]
+#[path = "../../../test/engine/content.rs"]
 mod tests;

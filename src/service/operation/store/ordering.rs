@@ -1,23 +1,23 @@
 use super::HistoryStore;
 use crate::operation::model::OperationId;
 use core::cmp::Ordering;
-use rusqlite::{OptionalExtension as _, params};
+use diesel::{OptionalExtension as _, RunQueryDsl as _, sql_types::Binary};
 pub(crate) fn for_undo(store: &HistoryStore, ids: &[OperationId]) -> anyhow::Result<Vec<usize>> {
     let mut ordered = {
-        let connection = store.lock_connection()?;
-        let mut statement =
-            connection.prepare("SELECT sequence FROM operations WHERE uuid = ?1")?;
+        let mut connection = store.lock_connection()?;
         let queried = ids
             .iter()
             .enumerate()
             .map(|(index, id)| {
-                let sequence = statement
-                    .query_row(params![id.as_bytes()], |row| row.get::<_, i64>(0))
-                    .optional()?;
+                let sequence =
+                    diesel::sql_query("SELECT sequence AS value FROM operations WHERE uuid = ?")
+                        .bind::<Binary, _>(id.as_bytes().as_slice())
+                        .get_result::<super::rows::IntegerValue>(&mut *connection)
+                        .optional()?
+                        .map(|row| row.value);
                 Ok((index, sequence))
             })
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        drop(statement);
+            .collect::<diesel::QueryResult<Vec<_>>>()?;
         drop(connection);
         queried
     };

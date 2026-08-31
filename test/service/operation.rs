@@ -1,13 +1,16 @@
-use super::{
-    OperationService,
-    model::{FileState, Mutation, OperationId, OperationKind},
-};
-use rusqlite::TransactionBehavior;
+use super::{OperationService, model::OperationId};
 use std::fs;
+#[path = "operation/applying.rs"]
 mod applying;
+#[path = "operation/coalescing.rs"]
 mod coalescing;
+#[path = "operation/history.rs"]
+mod history;
+#[path = "operation/line_endings.rs"]
 mod line_endings;
+#[path = "operation/replacement.rs"]
 mod replacement;
+#[path = "operation/validation.rs"]
 mod validation;
 fn uuid_from(output: &str) -> String {
     let (_, after_start) = output.split_once("<UUID>\n").unwrap();
@@ -127,34 +130,6 @@ fn separate_service_instances_share_the_wal_history() {
     let undone = reader.undo(&[uuid_from(&applied)]);
     assert!(undone.succeeded(), "{}", undone.render());
     assert!(!target.exists());
-}
-#[test]
-fn history_retention_uses_only_the_latest_thousand_records() {
-    let directory = tempfile::tempdir().unwrap();
-    let service = service(&directory);
-    let mut connection = service.history.lock_connection().unwrap();
-    let transaction = connection
-        .transaction_with_behavior(TransactionBehavior::Immediate)
-        .unwrap();
-    for index in 0_u16..1_001 {
-        let mutation = Mutation::single(
-            OperationKind::Edit,
-            directory.path().join(format!("{index}.txt")),
-            FileState::Missing,
-            FileState::Missing,
-        );
-        service
-            .history
-            .insert(&transaction, &mutation, None)
-            .unwrap();
-        service.history.prune(&transaction).unwrap();
-    }
-    let count: i64 = transaction
-        .query_row("SELECT COUNT(*) FROM operations", [], |row| row.get(0))
-        .unwrap();
-    assert_eq!(count, 1000);
-    transaction.commit().unwrap();
-    drop(connection);
 }
 #[test]
 fn batch_undo_keeps_successes_beside_invalid_uuid_failure() {

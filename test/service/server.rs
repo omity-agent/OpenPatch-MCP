@@ -5,9 +5,11 @@ use rmcp::{
     model::{CallToolRequestParams, ClientRequest, Request},
 };
 use std::fs;
+#[path = "server/general.rs"]
 mod general;
-mod structured_result;
-use structured_result::{verify_failure, verify_success};
+#[path = "server/structured.rs"]
+mod structured;
+use structured::{verify_failure, verify_success};
 #[derive(Clone, Default)]
 struct TestClient;
 #[expect(

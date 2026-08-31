@@ -32,4 +32,5 @@ fn flatten_pattern(pattern: &[String]) -> Vec<char> {
     chars
 }
 #[cfg(test)]
+#[path = "../../../test/engine/nearest.rs"]
 mod tests;

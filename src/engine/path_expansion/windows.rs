@@ -9,11 +9,24 @@ where
 {
     let mut output = String::with_capacity(path.len());
     let mut cursor = 0;
-    while let Some(marker_offset) = path.get(cursor..).and_then(|tail| tail.find('%')) {
+    loop {
+        let Some(tail) = path.get(cursor..) else {
+            return Err(PathExpansionError::InvalidBoundary {
+                path: original_path.to_owned(),
+            });
+        };
+        let Some(marker_offset) = tail.find('%') else {
+            break;
+        };
         let marker_index = cursor + marker_offset;
         output.push_str(path_slice(path, cursor, marker_index));
         let name_start = marker_index + 1;
-        let Some(close_offset) = path.get(name_start..).and_then(|tail| tail.find('%')) else {
+        let Some(name_tail) = path.get(name_start..) else {
+            return Err(PathExpansionError::InvalidBoundary {
+                path: original_path.to_owned(),
+            });
+        };
+        let Some(close_offset) = name_tail.find('%') else {
             output.push('%');
             cursor = name_start;
             continue;

@@ -180,4 +180,5 @@ impl MatchMode {
     }
 }
 #[cfg(test)]
+#[path = "../../test/engine/seek_sequence.rs"]
 mod tests;

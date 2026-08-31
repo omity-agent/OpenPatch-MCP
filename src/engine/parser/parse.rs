@@ -83,11 +83,7 @@ fn parse_update(
     path: &str,
 ) -> Result<(FileHunk, usize), ParseFailure> {
     let mut index = marker_index + 1;
-    let move_path = lines
-        .get(index)
-        .and_then(|line| line.strip_prefix(MOVE_TO_MARKER))
-        .map(|move_path_text| parse_path(move_path_text, index))
-        .transpose()?;
+    let move_path = parse_move_path(lines, index)?;
     if move_path.is_some() {
         index += 1;
     }
@@ -118,6 +114,15 @@ fn parse_update(
         },
         index,
     ))
+}
+fn parse_move_path(lines: &[&str], index: usize) -> Result<Option<PathBuf>, ParseFailure> {
+    let Some(line) = lines.get(index) else {
+        return Ok(None);
+    };
+    let Some(path_text) = line.strip_prefix(MOVE_TO_MARKER) else {
+        return Ok(None);
+    };
+    Ok(Some(parse_path(path_text, index)?))
 }
 fn parse_chunk_context(line: &str, index: usize) -> Result<Option<String>, ParseFailure> {
     if line == EMPTY_CHANGE_CONTEXT_MARKER {

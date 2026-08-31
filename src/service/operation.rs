@@ -1,11 +1,9 @@
 mod apply;
-pub(crate) mod files;
-mod merge;
+mod file_state;
 pub(crate) mod model;
-mod output;
+mod result;
 mod store;
-mod undo;
-pub(crate) use output::{OperationOutput, PatchToolOutput};
+pub(crate) use result::{OperationOutput, PatchToolOutput};
 use store::HistoryStore;
 #[derive(Debug, Clone)]
 pub(crate) struct OperationService {
@@ -35,8 +33,9 @@ impl OperationService {
         apply::execute_replacement(self, path, old_string, new_string)
     }
     pub(crate) fn undo(&self, uuids: &[String]) -> OperationOutput {
-        undo::execute(self, uuids)
+        apply::undo::execute(self, uuids)
     }
 }
 #[cfg(test)]
+#[path = "../../test/service/operation.rs"]
 mod tests;

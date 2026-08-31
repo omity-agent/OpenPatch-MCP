@@ -1,4 +1,7 @@
-use super::{FileState, Mutation, OperationKind, PlannedMutation, Workspace};
+use super::{
+    super::model::{FileState, Mutation, OperationKind},
+    workspace::{PlannedMutation, VirtualFile, Workspace},
+};
 use rustc_hash::FxHashSet;
 use smallvec::smallvec;
 struct OrderedMutation {
@@ -81,12 +84,12 @@ impl Workspace {
         }
         ordered
     }
-    fn file(&self, path: &std::path::Path) -> Option<&super::VirtualFile> {
+    fn file(&self, path: &std::path::Path) -> Option<&VirtualFile> {
         let index = self.indices.get(path)?;
         self.files.get(*index)
     }
 }
-fn effective_before(file: &super::VirtualFile) -> Option<&FileState> {
+fn effective_before(file: &VirtualFile) -> Option<&FileState> {
     let logical_before = file.logical_before.as_ref()?;
     if logical_before == &file.current && file.observed != file.current {
         Some(&file.observed)

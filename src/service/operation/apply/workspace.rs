@@ -1,11 +1,10 @@
-use super::super::{
+use super::{
+    super::model::{FileState, FileStates, Mutation, OperationKind, PathRole},
     files,
-    model::{FileState, FileStates, Mutation, OperationKind, PathRole},
 };
 use crate::parser::FileHunk;
 use rustc_hash::FxHashMap;
 use std::path::{Path, PathBuf};
-mod finalize;
 pub(super) struct PlannedMutation {
     pub(super) mutation: Mutation,
     pub(super) observed: FileStates,
@@ -21,18 +20,18 @@ pub(super) struct BatchPlan {
     pub(super) eliminated_all: bool,
 }
 #[derive(Default)]
-struct Workspace {
-    files: Vec<VirtualFile>,
-    indices: FxHashMap<PathBuf, usize>,
-    mutation_count: usize,
+pub(super) struct Workspace {
+    pub(super) files: Vec<VirtualFile>,
+    pub(super) indices: FxHashMap<PathBuf, usize>,
+    pub(super) mutation_count: usize,
 }
-struct VirtualFile {
-    path: PathBuf,
-    observed: FileState,
-    current: FileState,
-    origin: Option<PathBuf>,
-    logical_before: Option<FileState>,
-    first_order: usize,
+pub(super) struct VirtualFile {
+    pub(super) path: PathBuf,
+    pub(super) observed: FileState,
+    pub(super) current: FileState,
+    pub(super) origin: Option<PathBuf>,
+    pub(super) logical_before: Option<FileState>,
+    pub(super) first_order: usize,
 }
 pub(super) fn plan(hunks: Vec<FileHunk>) -> BatchPlan {
     let mut workspace = Workspace::default();

@@ -1,5 +1,5 @@
 use super::super::{
-    files,
+    apply::files,
     model::{FileState, Mutation, OperationKind},
 };
 use std::fs;

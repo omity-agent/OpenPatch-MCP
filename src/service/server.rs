@@ -117,4 +117,5 @@ fn to_tool_result(output: &crate::command::PatchOutput) -> Result<CallToolResult
 )]
 impl ServerHandler for Application {}
 #[cfg(test)]
+#[path = "../../test/service/server.rs"]
 mod tests;

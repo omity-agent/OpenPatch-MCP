@@ -1,7 +1,6 @@
-mod file;
+pub(crate) use super::file_state::{FileContents, FileState};
 use anyhow::Context as _;
 use core::fmt;
-pub(crate) use file::{FileContents, FileState};
 use smallvec::{SmallVec, smallvec};
 use std::path::PathBuf;
 use uuid::Uuid;

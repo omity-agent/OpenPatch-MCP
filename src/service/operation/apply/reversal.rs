@@ -1,80 +1,9 @@
 use super::{
-    OperationService, files, merge,
-    model::{
-        FileState, Mutation, OperationId, OperationKind, PathChange, PathRole, StoredOperation,
-    },
-    output::{Failure, OperationOutput, Success},
+    super::model::{FileState, Mutation, OperationKind, PathChange, PathRole, StoredOperation},
+    files, merge,
 };
-use rusqlite::TransactionBehavior;
 use smallvec::smallvec;
-pub(super) fn execute(service: &OperationService, uuid_texts: &[String]) -> OperationOutput {
-    if uuid_texts.is_empty() {
-        return OperationOutput::failed(String::from("uuids must not be empty"));
-    }
-    let mut output = OperationOutput::default();
-    let mut targets = Vec::with_capacity(uuid_texts.len());
-    for uuid_text in uuid_texts {
-        match OperationId::parse(uuid_text) {
-            Ok(uuid) => targets.push((uuid_text.clone(), uuid)),
-            Err(error) => output.push_failure(Failure::undo(uuid_text.clone(), error.to_string())),
-        }
-    }
-    let target_ids = targets
-        .iter()
-        .map(|target_entry| target_entry.1)
-        .collect::<Vec<_>>();
-    let order = match super::store::for_undo(&service.history, &target_ids) {
-        Ok(order) => order,
-        Err(error) => {
-            let reason = error.to_string();
-            for (uuid_text, _) in targets {
-                output.push_failure(Failure::undo(uuid_text, reason.clone()));
-            }
-            return output;
-        }
-    };
-    for index in order {
-        let Some((uuid_text, target)) = targets.get(index).cloned() else {
-            output.push_failure(Failure::global(String::from(
-                "undo target ordering returned an invalid index",
-            )));
-            return output;
-        };
-        match commit(service, target) {
-            Ok((mutation, uuid)) => output.push_success(success(&mutation, uuid, target)),
-            Err(error) => output.push_failure(Failure::undo(uuid_text, error.to_string())),
-        }
-    }
-    output
-}
-fn commit(
-    service: &OperationService,
-    target: OperationId,
-) -> anyhow::Result<(Mutation, OperationId)> {
-    let mut connection = service.history.lock_connection()?;
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    service.history.ensure_available(&transaction, target)?;
-    let stored = super::store::HistoryStore::load(&transaction, target)?;
-    let mutation = plan(&stored)?;
-    let uuid = service
-        .history
-        .consume_and_insert(&transaction, target, &mutation)?;
-    service.history.prune(&transaction)?;
-    files::apply(&mutation)?;
-    if let Err(error) = transaction.commit() {
-        drop(connection);
-        let rollback = files::roll_back(&mutation);
-        return match rollback {
-            Ok(()) => Err(error.into()),
-            Err(rollback_error) => Err(anyhow::anyhow!(
-                "Failed to commit undo history: {error}; failed to roll back files: {rollback_error}"
-            )),
-        };
-    }
-    drop(connection);
-    Ok((mutation, uuid))
-}
-fn plan(stored: &StoredOperation) -> anyhow::Result<Mutation> {
+pub(super) fn plan(stored: &StoredOperation) -> anyhow::Result<Mutation> {
     if stored.changes.len() == 1 {
         plan_single(stored)
     } else {
@@ -182,19 +111,4 @@ const fn transition_kind(before: &FileState, after: &FileState) -> OperationKind
         (FileState::Present(_), FileState::Missing) => OperationKind::Delete,
         _ => OperationKind::Edit,
     }
-}
-fn success(mutation: &Mutation, uuid: OperationId, target: OperationId) -> Success {
-    let (before, after) = super::apply::logical_stats(mutation);
-    Success::new(
-        mutation.kind,
-        uuid,
-        Some(target),
-        mutation.display_path.clone(),
-        (mutation.kind != OperationKind::Add)
-            .then_some(before)
-            .flatten(),
-        (mutation.kind != OperationKind::Delete)
-            .then_some(after)
-            .flatten(),
-    )
 }

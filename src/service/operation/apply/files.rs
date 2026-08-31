@@ -1,4 +1,4 @@
-use super::model::{FileState, Mutation};
+use super::super::model::{FileState, Mutation};
 use atomic_write_file::AtomicWriteFile;
 use smallvec::SmallVec;
 use std::{
@@ -21,7 +21,7 @@ pub(super) fn apply(mutation: &Mutation) -> anyhow::Result<()> {
         .collect::<SmallVec<[_; 2]>>();
     apply_from(mutation, &states)
 }
-pub(super) fn apply_observed(mutation: &Mutation, observed: &[FileState]) -> anyhow::Result<()> {
+pub(crate) fn apply_observed(mutation: &Mutation, observed: &[FileState]) -> anyhow::Result<()> {
     ensure_state_count(mutation, observed)?;
     let states = observed.iter().collect::<SmallVec<[_; 2]>>();
     apply_from(mutation, &states)

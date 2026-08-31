@@ -1,9 +1,14 @@
 mod batch;
-mod coalesce;
+pub(crate) mod files;
+mod merge;
+mod planning;
+mod reversal;
+pub(super) mod undo;
+mod workspace;
 use super::{
     OperationService,
     model::{Mutation, OperationId, OperationKind, PathRole},
-    output::{Failure, FileStats, OperationOutput, Success},
+    result::{Failure, FileStats, OperationOutput, Success},
 };
 use crate::parser::{ChunkLines, FileHunk, UpdateChunk};
 pub(super) fn execute(service: &OperationService, patch: &str) -> OperationOutput {
@@ -79,17 +84,21 @@ fn success(mutation: &Mutation, uuid: OperationId) -> Success {
     )
 }
 pub(super) fn logical_stats(mutation: &Mutation) -> (Option<FileStats>, Option<FileStats>) {
-    let before = mutation
+    let before = before_contents(mutation).map(FileStats::from_contents);
+    let after = after_contents(mutation).map(FileStats::from_contents);
+    (before, after)
+}
+fn before_contents(mutation: &Mutation) -> Option<&str> {
+    let change = mutation
         .change(PathRole::Source)
         .or_else(|_| mutation.change(PathRole::Single))
-        .ok()
-        .and_then(|change| change.before.contents())
-        .map(FileStats::from_contents);
-    let after = mutation
+        .ok()?;
+    change.before.contents()
+}
+fn after_contents(mutation: &Mutation) -> Option<&str> {
+    let change = mutation
         .change(PathRole::Destination)
         .or_else(|_| mutation.change(PathRole::Single))
-        .ok()
-        .and_then(|change| change.after.contents())
-        .map(FileStats::from_contents);
-    (before, after)
+        .ok()?;
+    change.after.contents()
 }
