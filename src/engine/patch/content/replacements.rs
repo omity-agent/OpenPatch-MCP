@@ -51,7 +51,7 @@ pub(super) fn apply_replacements(
         &mut line_written,
         &mut last_line_empty,
     );
-    if line_written && !last_line_empty {
+    if line_written && !last_line_empty && original_contents.ends_with('\n') {
         result.push('\n');
     }
     result

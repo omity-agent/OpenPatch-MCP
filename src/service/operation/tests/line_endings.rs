@@ -33,6 +33,25 @@ fn update_preserves_crlf_line_endings() {
     assert_eq!(fs::read_to_string(target).unwrap(), "new\r\nkeep\r\n");
 }
 #[test]
+fn update_preserves_missing_final_newline() {
+    let directory = tempfile::tempdir().unwrap();
+    let service = service(&directory);
+    let target = directory.path().join("target.txt");
+    fs::write(&target, "old\r\nkeep").unwrap();
+    apply(
+        &service,
+        &[
+            String::from("*** Begin Patch"),
+            format!("*** Update File: {}", target.display()),
+            String::from("@@"),
+            String::from("-old"),
+            String::from("+new"),
+            String::from("*** End Patch"),
+        ],
+    );
+    assert_eq!(fs::read_to_string(target).unwrap(), "new\r\nkeep");
+}
+#[test]
 fn update_normalizes_mixed_line_endings_to_lf() {
     let directory = tempfile::tempdir().unwrap();
     let service = service(&directory);
@@ -79,6 +98,16 @@ fn replacement_preserves_crlf_line_endings() {
     let output = service.replace(&target.display().to_string(), "old\nkeep", "new\nchanged");
     assert!(output.succeeded(), "{}", output.render());
     assert_eq!(fs::read_to_string(target).unwrap(), "new\r\nchanged\r\n");
+}
+#[test]
+fn replacement_preserves_missing_final_newline() {
+    let directory = tempfile::tempdir().unwrap();
+    let service = service(&directory);
+    let target = directory.path().join("target.txt");
+    fs::write(&target, "old\nkeep").unwrap();
+    let output = service.replace(&target.display().to_string(), "old", "new");
+    assert!(output.succeeded(), "{}", output.render());
+    assert_eq!(fs::read_to_string(target).unwrap(), "new\nkeep");
 }
 #[test]
 fn undo_preserves_crlf_with_an_unrelated_edit() {

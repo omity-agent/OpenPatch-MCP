@@ -85,7 +85,7 @@ fn replacements_are_applied_in_one_forward_pass() {
     assert_eq!(result_lines.get(999).copied(), Some("line-999"));
 }
 #[test]
-fn adjacent_insertions_keep_patch_order() {
+fn adjacent_insertions_keep_patch_order_and_final_newline_state() {
     let original_contents = "a";
     let original_lines = ["a"];
     let offsets = line_offsets(&original_lines);
@@ -93,7 +93,20 @@ fn adjacent_insertions_keep_patch_order() {
     let second = [String::from("c")];
     let replacements = vec![(1, 0, first.as_slice()), (1, 0, second.as_slice())];
     let result = apply_replacements(original_contents, &original_lines, &offsets, &replacements);
-    assert_eq!(result, "a\nb\nc\n");
+    assert_eq!(result, "a\nb\nc");
+}
+#[test]
+fn replacement_preserves_final_newline_state() {
+    let replacement = [String::from("new")];
+    for (original_contents, expected) in [("old", "new"), ("old\n", "new\n")] {
+        let original_lines = ["old"];
+        let offsets = line_offsets(&original_lines);
+        let replacements = [(0, 1, replacement.as_slice())];
+        assert_eq!(
+            apply_replacements(original_contents, &original_lines, &offsets, &replacements),
+            expected
+        );
+    }
 }
 fn line_offsets(lines: &[&str]) -> Vec<usize> {
     let mut offsets = Vec::with_capacity(lines.len());
