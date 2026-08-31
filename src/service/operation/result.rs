@@ -1,17 +1,34 @@
-#[path = "structured_result.rs"]
-mod structured;
+mod render;
 use super::model::{OperationId, OperationKind};
-use core::fmt::Write as _;
-use std::path::{Path, PathBuf};
-pub(crate) use structured::PatchToolOutput;
-#[derive(Debug, Default)]
+use rmcp::schemars::{JsonSchema, Schema};
+use sonic_rs::Serialize;
+use std::path::PathBuf;
+pub(crate) type PatchToolOutput = OperationOutput;
+#[derive(Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+#[schemars(
+    rename = "PatchToolOutput",
+    rename_all = "camelCase",
+    deny_unknown_fields
+)]
 pub(crate) struct OperationOutput {
+    succeeded: bool,
     successes: Vec<Success>,
     failures: Vec<Failure>,
+}
+impl Default for OperationOutput {
+    fn default() -> Self {
+        Self {
+            succeeded: true,
+            successes: Vec::new(),
+            failures: Vec::new(),
+        }
+    }
 }
 impl OperationOutput {
     pub(super) fn failed(reason: String) -> Self {
         Self {
+            succeeded: false,
             successes: Vec::new(),
             failures: vec![Failure::global(reason)],
         }
@@ -20,36 +37,27 @@ impl OperationOutput {
         self.successes.push(success);
     }
     pub(super) fn push_failure(&mut self, failure: Failure) {
+        self.succeeded = false;
         self.failures.push(failure);
     }
     pub(crate) const fn succeeded(&self) -> bool {
-        self.failures.is_empty()
+        self.succeeded
     }
     pub(crate) fn render(&self) -> String {
-        let mut output = String::with_capacity((self.successes.len() + self.failures.len()) * 192);
-        if !self.successes.is_empty() {
-            output.push_str("<SUCCEEDED>\n");
-            for success in &self.successes {
-                push_success(&mut output, success);
-            }
-            output.push_str("</SUCCEEDED>");
-        }
-        if !self.failures.is_empty() {
-            if !output.is_empty() {
-                output.push('\n');
-            }
-            output.push_str("<FAILED>\n");
-            for failure in &self.failures {
-                push_failure(&mut output, failure);
-            }
-            output.push_str("</FAILED>");
-        }
-        output
+        render::operations(self)
+    }
+    pub(crate) fn structured(&self) -> sonic_rs::Value {
+        sonic_rs::json!(self)
     }
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
+#[schemars(rename = "FileStatistics", deny_unknown_fields)]
 pub(super) struct FileStats {
+    #[serde(rename = "lineCount")]
+    # [schemars (rename = "lineCount" , transform = remove_integer_format)]
     line_count: usize,
+    #[serde(rename = "characterCount")]
+    # [schemars (rename = "characterCount" , transform = remove_integer_format)]
     character_count: usize,
 }
 impl FileStats {
@@ -60,17 +68,19 @@ impl FileStats {
         }
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+# [schemars (rename = "SuccessfulOperation" , rename_all = "camelCase" , deny_unknown_fields , transform = require_success_fields)]
 pub(super) struct Success {
     kind: OperationKind,
-    uuid: OperationId,
-    undo_of: Option<OperationId>,
-    path: PathBuf,
+    path: String,
     before: Option<FileStats>,
     after: Option<FileStats>,
+    uuid: String,
+    undo_of: Option<String>,
 }
 impl Success {
-    pub(super) const fn new(
+    pub(super) fn new(
         kind: OperationKind,
         uuid: OperationId,
         undo_of: Option<OperationId>,
@@ -80,24 +90,35 @@ impl Success {
     ) -> Self {
         Self {
             kind,
-            uuid,
-            undo_of,
-            path,
+            path: display_path(path),
             before,
             after,
+            uuid: uuid.to_string(),
+            undo_of: undo_of.map(|value| value.to_string()),
         }
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+# [schemars (rename = "OperationFailure" , rename_all = "camelCase" , deny_unknown_fields , transform = require_failure_fields)]
 pub(super) struct Failure {
-    operation: Option<(OperationKind, PathBuf)>,
+    operation: Option<FailedOperation>,
     undo_uuid: Option<String>,
     reason: String,
 }
+#[derive(Debug, Serialize, JsonSchema)]
+#[schemars(rename = "FailedOperation", deny_unknown_fields)]
+struct FailedOperation {
+    kind: OperationKind,
+    path: String,
+}
 impl Failure {
-    pub(super) const fn file(kind: OperationKind, path: PathBuf, reason: String) -> Self {
+    pub(super) fn file(kind: OperationKind, path: PathBuf, reason: String) -> Self {
         Self {
-            operation: Some((kind, path)),
+            operation: Some(FailedOperation {
+                kind,
+                path: display_path(path),
+            }),
             undo_uuid: None,
             reason,
         }
@@ -117,64 +138,24 @@ impl Failure {
         }
     }
 }
-fn push_success(output: &mut String, success: &Success) {
-    push_start(output, success.kind.tag(), &success.path);
-    if let Some(before) = success.before {
-        push_stats(output, "before", before);
-    }
-    if let Some(after) = success.after {
-        push_stats(output, "after", after);
-    }
-    push_uuid(output, "UUID", success.uuid);
-    if let Some(undo_of) = success.undo_of {
-        push_uuid(output, "UNDO_OF", undo_of);
-    }
-    push_end(output, success.kind.tag());
+fn remove_integer_format(schema: &mut Schema) {
+    schema.remove("format");
 }
-fn push_failure(output: &mut String, failure: &Failure) {
-    if let Some(operation) = failure.operation.as_ref() {
-        push_start(output, operation.0.tag(), &operation.1);
-        push_reason(output, &failure.reason);
-        push_end(output, operation.0.tag());
-    } else if let Some(uuid) = failure.undo_uuid.as_ref() {
-        output.push_str("<UNDO>\n<UUID>\n");
-        output.push_str(uuid);
-        output.push_str("\n</UUID>\n");
-        push_reason(output, &failure.reason);
-        output.push_str("</UNDO>\n");
-    } else {
-        push_reason(output, &failure.reason);
-    }
+fn require_success_fields(schema: &mut Schema) {
+    schema.insert(
+        String::from("required"),
+        required_fields(&["kind", "path", "before", "after", "uuid", "undoOf"]),
+    );
 }
-fn push_start(output: &mut String, tag: &str, path: &Path) {
-    if let Err(error) = writeln!(output, "<{tag}>\n{}", path.display()) {
-        panic!("writing to String failed: {error}");
-    }
+fn require_failure_fields(schema: &mut Schema) {
+    schema.insert(
+        String::from("required"),
+        required_fields(&["operation", "undoUuid", "reason"]),
+    );
 }
-fn push_end(output: &mut String, tag: &str) {
-    if let Err(error) = writeln!(output, "</{tag}>") {
-        panic!("writing to String failed: {error}");
-    }
+fn required_fields(fields: &[&str]) -> rmcp::serde_json::Value {
+    rmcp::serde_json::Value::Array(fields.iter().map(|field| (*field).into()).collect())
 }
-fn push_uuid(output: &mut String, tag: &str, uuid: OperationId) {
-    if let Err(error) = writeln!(output, "<{tag}>\n{uuid}\n</{tag}>") {
-        panic!("writing to String failed: {error}");
-    }
-}
-fn push_stats(output: &mut String, label: &str, stats: FileStats) {
-    if let Err(error) = writeln!(
-        output,
-        "{label}: {} lines, {} chars",
-        stats.line_count, stats.character_count
-    ) {
-        panic!("writing to String failed: {error}");
-    }
-}
-fn push_reason(output: &mut String, reason: &str) {
-    output.push_str("<REASON>\n");
-    output.push_str(reason);
-    if !reason.ends_with('\n') {
-        output.push('\n');
-    }
-    output.push_str("</REASON>\n");
+fn display_path(path: PathBuf) -> String {
+    path.into_os_string().to_string_lossy().into_owned()
 }

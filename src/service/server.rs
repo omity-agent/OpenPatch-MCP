@@ -1,5 +1,5 @@
 use crate::{
-    command::{PatchExecution, PatchRunner, ReplaceExecution, UndoExecution},
+    operation::{OperationOutput, OperationService},
     service::cli::InputStyle,
 };
 use rmcp::{
@@ -16,7 +16,7 @@ use serde::Deserialize;
 #[derive(Clone)]
 pub struct Application {
     tool_router: ToolRouter<Self>,
-    runner: PatchRunner,
+    service: OperationService,
 }
 #[derive(Debug, Deserialize, schemars :: JsonSchema)]
 pub struct ApplyPatchRequest {
@@ -37,14 +37,14 @@ impl Application {
     pub fn new(style: InputStyle) -> anyhow::Result<Self> {
         Ok(Self {
             tool_router: Self::tool_router(style)?,
-            runner: PatchRunner::open_default()?,
+            service: OperationService::open_default()?,
         })
     }
     #[cfg(test)]
     fn with_database(path: &std::path::Path, style: InputStyle) -> anyhow::Result<Self> {
         Ok(Self {
             tool_router: Self::tool_router(style)?,
-            runner: PatchRunner::open(path)?,
+            service: OperationService::open(path)?,
         })
     }
     fn tool_router(style: InputStyle) -> anyhow::Result<ToolRouter<Self>> {
@@ -57,20 +57,16 @@ impl Application {
         &self,
         Parameters(request): Parameters<ApplyPatchRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let output = self.runner.apply(PatchExecution {
-            patch: &request.patch,
-        });
+        let output = self.service.apply(&request.patch);
         to_tool_result(&output)
     }
     fn apply_general(
         &self,
         Parameters(request): Parameters<ReplaceRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let output = self.runner.replace(ReplaceExecution {
-            path: &request.path,
-            old_string: &request.old_string,
-            new_string: &request.new_string,
-        });
+        let output = self
+            .service
+            .replace(&request.path, &request.old_string, &request.new_string);
         to_tool_result(&output)
     }
     # [tool (name = "undo_patch" , description = "Undo recorded patch operations. The input order does not matter. When you want to undo changes, always use the `undo_patch` tool instead of manually rewriting them. The tool is more efficient and ensures that the undoed content are exactly the same as the original." , output_schema = rmcp :: handler :: server :: tool :: schema_for_type ::< crate :: operation :: PatchToolOutput > ())]
@@ -78,9 +74,7 @@ impl Application {
         &self,
         Parameters(request): Parameters<UndoPatchRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let output = self.runner.undo(UndoExecution {
-            uuids: &request.uuids,
-        });
+        let output = self.service.undo(&request.uuids);
         to_tool_result(&output)
     }
 }
@@ -96,10 +90,11 @@ where
     Ok(Tool::new("apply_patch", description, input_schema)
         .with_raw_output_schema(schema_for_type::<crate::operation::PatchToolOutput>()))
 }
-fn to_tool_result(output: &crate::command::PatchOutput) -> Result<CallToolResult, McpError> {
+fn to_tool_result(output: &OperationOutput) -> Result<CallToolResult, McpError> {
     let succeeded = output.succeeded();
-    let content = vec![ContentBlock::text(output.render().to_owned())];
-    let structured_content = rmcp::serde_json::Value::deserialize(output.structured())
+    let content = vec![ContentBlock::text(output.render())];
+    let serialized = output.structured();
+    let structured_content = rmcp::serde_json::Value::deserialize(&serialized)
         .map_err(|error| McpError::internal_error(error.to_string(), None))?;
     let mut result = if succeeded {
         CallToolResult::success(content)

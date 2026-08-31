@@ -105,6 +105,7 @@ lz4_flex = { version = "*", default-features = false, features = [
 ] }
 memchr = "*"
 mimalloc = { version = "*", features = ["v3"] }
+num_enum = "*"
 rmcp = { version = "*", features = [
     "client",
     "server",

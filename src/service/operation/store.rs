@@ -40,7 +40,7 @@ impl HistoryStore {
             "INSERT INTO operations(uuid, kind, display_path, undo_of) VALUES (?, ?, ?, ?)",
         )
         .bind::<Binary, _>(uuid.as_bytes().as_slice())
-        .bind::<BigInt, _>(mutation.kind.code())
+        .bind::<BigInt, _>(i64::from(mutation.kind))
         .bind::<Binary, _>(display_path)
         .bind::<Nullable<Binary>, _>(undo_bytes)
         .execute(connection)
@@ -51,7 +51,7 @@ impl HistoryStore {
                 i64::try_from(ordinal).context("too many paths in one operation")?;
             let before = writer.store(&change.before)?;
             let after = writer.store(&change.after)?;
-            let role = change.role.code();
+            let role = i64::from(change.role);
             let path = path::encode(&change.path);
             diesel::sql_query("INSERT INTO operation_files VALUES (?, ?, ?, ?, ?, ?)")
                 .bind::<Binary, _>(uuid.as_bytes().as_slice())
@@ -78,7 +78,7 @@ impl HistoryStore {
         let mut reader = content::Reader::new(connection);
         for row in rows {
             changes.push(PathChange {
-                role: PathRole::from_code(row.role)?,
+                role: PathRole::try_from(row.role).context("invalid path role in history")?,
                 path: path::decode(&row.path)?,
                 before: reader.load(row.before_digest)?,
                 after: reader.load(row.after_digest)?,

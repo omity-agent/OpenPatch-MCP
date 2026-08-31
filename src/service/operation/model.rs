@@ -1,7 +1,10 @@
 pub(crate) use super::file_state::{FileContents, FileState};
 use anyhow::Context as _;
 use core::fmt;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
+use rmcp::schemars::JsonSchema;
 use smallvec::{SmallVec, smallvec};
+use sonic_rs::Serialize;
 use std::path::PathBuf;
 use uuid::Uuid;
 use uuid_simd::UuidExt;
@@ -30,11 +33,14 @@ impl fmt::Display for OperationId {
         UuidExt::format_hyphenated(&self.0).fmt(f)
     }
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema, IntoPrimitive)]
+#[repr(i64)]
+#[serde(rename_all = "UPPERCASE")]
+#[schemars(rename = "OutputOperationKind", rename_all = "UPPERCASE")]
 pub(crate) enum OperationKind {
-    Add,
-    Edit,
-    Delete,
+    Add = 0,
+    Edit = 1,
+    Delete = 2,
 }
 impl OperationKind {
     pub(super) const fn tag(self) -> &'static str {
@@ -44,36 +50,13 @@ impl OperationKind {
             Self::Delete => "DELETE",
         }
     }
-    pub(super) const fn code(self) -> i64 {
-        match self {
-            Self::Add => 0,
-            Self::Edit => 1,
-            Self::Delete => 2,
-        }
-    }
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, TryFromPrimitive)]
+#[repr(i64)]
 pub(crate) enum PathRole {
-    Single,
-    Source,
-    Destination,
-}
-impl PathRole {
-    pub(super) const fn code(self) -> i64 {
-        match self {
-            Self::Single => 0,
-            Self::Source => 1,
-            Self::Destination => 2,
-        }
-    }
-    pub(super) fn from_code(code: i64) -> anyhow::Result<Self> {
-        match code {
-            0 => Ok(Self::Single),
-            1 => Ok(Self::Source),
-            2 => Ok(Self::Destination),
-            _ => anyhow::bail!("invalid path role in history: {code}"),
-        }
-    }
+    Single = 0,
+    Source = 1,
+    Destination = 2,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PathChange {
