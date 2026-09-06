@@ -1,7 +1,7 @@
 use super::HistoryStore;
 use crate::operation::model::OperationId;
 use core::cmp::Ordering;
-use diesel::{OptionalExtension as _, RunQueryDsl as _, sql_types::Binary};
+use diesel::{OptionalExtension as _, RunQueryDsl as _, sql_types::BigInt};
 pub(crate) fn for_undo(store: &HistoryStore, ids: &[OperationId]) -> anyhow::Result<Vec<usize>> {
     let mut ordered = {
         let mut connection = store.lock_connection()?;
@@ -10,8 +10,8 @@ pub(crate) fn for_undo(store: &HistoryStore, ids: &[OperationId]) -> anyhow::Res
             .enumerate()
             .map(|(index, id)| {
                 let sequence =
-                    diesel::sql_query("SELECT sequence AS value FROM operations WHERE uuid = ?")
-                        .bind::<Binary, _>(id.as_bytes().as_slice())
+                    diesel::sql_query("SELECT sequence AS value FROM operations WHERE id = ?")
+                        .bind::<BigInt, _>(id.value())
                         .get_result::<super::rows::IntegerValue>(&mut *connection)
                         .optional()?
                         .map(|row| row.value);

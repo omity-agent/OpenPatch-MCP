@@ -68,11 +68,11 @@ fn expanded_absolute_path(path: &str) -> anyhow::Result<std::path::PathBuf> {
 fn replacement_lines(value: &str) -> ChunkLines {
     value.lines().map(str::to_owned).collect()
 }
-fn success(mutation: &Mutation, uuid: OperationId) -> Success {
+fn success(mutation: &Mutation, id: OperationId) -> Success {
     let (before, after) = logical_stats(mutation);
     Success::new(
         mutation.kind,
-        uuid,
+        id,
         None,
         mutation.display_path.clone(),
         (mutation.kind != OperationKind::Add)

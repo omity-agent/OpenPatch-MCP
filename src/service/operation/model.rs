@@ -6,33 +6,47 @@ use rmcp::schemars::JsonSchema;
 use smallvec::{SmallVec, smallvec};
 use sonic_rs::Serialize;
 use std::path::PathBuf;
-use uuid::Uuid;
-use uuid_simd::UuidExt;
+pub(crate) const ID_PATTERN: &str = "^oppc-[0-9a-z]{8}$";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct OperationId(Uuid);
+pub(crate) struct OperationId(i64);
 impl OperationId {
-    pub(super) fn now_v7() -> Self {
-        Self(Uuid::from_u128(fast_uuid_v7::gen_id()))
+    pub(super) const LIMIT: i64 = 36_i64.pow(8);
+    pub(super) fn random() -> Self {
+        Self(rand::random_range(0..Self::LIMIT))
     }
-    pub(super) fn parse(input: &str) -> anyhow::Result<Self> {
-        <Uuid as UuidExt>::parse_hyphenated(input)
-            .map(Self)
-            .context("invalid UUID")
+    pub(crate) fn parse(input: &str) -> anyhow::Result<Self> {
+        const INVALID_ID: &str =
+            "invalid operation ID: expected oppc- followed by 8 lowercase Base36 digits";
+        let suffix = input.strip_prefix("oppc-").context(INVALID_ID)?;
+        anyhow::ensure!(
+            suffix.len() == 8
+                && suffix
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || byte.is_ascii_lowercase()),
+            INVALID_ID
+        );
+        Ok(Self(i64::from_str_radix(suffix, 36).context(INVALID_ID)?))
     }
-    pub(super) fn from_slice(bytes: &[u8]) -> anyhow::Result<Self> {
-        Uuid::from_slice(bytes)
-            .map(Self)
-            .context("invalid UUID in operation history")
+    pub(super) fn from_stored(value: i64) -> anyhow::Result<Self> {
+        anyhow::ensure!(
+            (0..Self::LIMIT).contains(&value),
+            "invalid operation ID in operation history: {value}"
+        );
+        Ok(Self(value))
     }
-    pub(super) const fn as_bytes(&self) -> &[u8; 16] {
-        self.0.as_bytes()
+    pub(super) const fn value(self) -> i64 {
+        self.0
     }
 }
 impl fmt::Display for OperationId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        UuidExt::format_hyphenated(&self.0).fmt(f)
+        let digits = radix_fmt::radix_36(self.0).to_string();
+        write!(f, "oppc-{digits:0>8}")
     }
 }
+#[cfg(test)]
+#[path = "../../../test/identifiers.rs"]
+mod identifier_tests;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema, IntoPrimitive)]
 #[repr(i64)]
 #[serde(rename_all = "UPPERCASE")]

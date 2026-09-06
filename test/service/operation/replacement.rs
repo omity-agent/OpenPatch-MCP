@@ -1,4 +1,4 @@
-use super::{service, uuid_from};
+use super::{id_from, service};
 use std::fs;
 #[test]
 fn uses_fuzzy_matching() {
@@ -32,7 +32,7 @@ fn can_be_undone() {
     let output = service.replace(&path, "old value", "new value");
     assert!(output.succeeded(), "{}", output.render());
     assert_eq!(fs::read_to_string(&target).unwrap(), "new value\n");
-    let undone = service.undo(&[uuid_from(&output.render())]);
+    let undone = service.undo(&[id_from(&output.render())]);
     assert!(undone.succeeded(), "{}", undone.render());
     assert_eq!(fs::read_to_string(target).unwrap(), "old value\n");
 }

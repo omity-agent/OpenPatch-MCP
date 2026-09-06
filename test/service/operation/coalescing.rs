@@ -1,7 +1,7 @@
-use super::{service, uuid_from};
+use super::{id_from, service};
 use std::fs;
 fn assert_single_kind(output: &str, kind: &str) {
-    assert_eq!(output.matches("<UUID>").count(), 1, "{output}");
+    assert_eq!(output.matches("<ID>").count(), 1, "{output}");
     assert!(output.contains(&format!("<{kind}>")), "{output}");
     for other in ["ADD", "EDIT", "DELETE"] {
         if other != kind {
@@ -33,7 +33,7 @@ fn delete_add_and_edit_are_coalesced_into_one_edit() {
     assert!(applied.succeeded(), "{}", applied.render());
     assert_single_kind(&applied.render(), "EDIT");
     assert_eq!(fs::read_to_string(&target).unwrap(), "final\n");
-    let undone = service.undo(&[uuid_from(&applied.render())]);
+    let undone = service.undo(&[id_from(&applied.render())]);
     assert!(undone.succeeded(), "{}", undone.render());
     assert_eq!(fs::read_to_string(target).unwrap(), "original\n");
 }
@@ -63,7 +63,7 @@ fn edits_followed_by_delete_are_coalesced_into_one_delete() {
     assert!(applied.succeeded(), "{}", applied.render());
     assert_single_kind(&applied.render(), "DELETE");
     assert!(!target.exists());
-    let undone = service.undo(&[uuid_from(&applied.render())]);
+    let undone = service.undo(&[id_from(&applied.render())]);
     assert!(undone.succeeded(), "{}", undone.render());
     assert_eq!(fs::read_to_string(target).unwrap(), "one\n");
 }
@@ -94,7 +94,7 @@ fn fully_cancelled_operations_return_an_error() {
             .render()
             .contains("No effective file operations remained after merging.")
     );
-    assert!(!applied.render().contains("<UUID>"));
+    assert!(!applied.render().contains("<ID>"));
     assert_eq!(fs::read_to_string(target).unwrap(), "old\n");
 }
 #[test]
@@ -116,7 +116,7 @@ fn already_applied_add_followed_by_delete_still_deletes_the_file() {
     assert!(applied.succeeded(), "{}", applied.render());
     assert_single_kind(&applied.render(), "DELETE");
     assert!(!target.exists());
-    let undone = service.undo(&[uuid_from(&applied.render())]);
+    let undone = service.undo(&[id_from(&applied.render())]);
     assert!(undone.succeeded(), "{}", undone.render());
     assert_eq!(fs::read_to_string(target).unwrap(), "added\n");
 }
@@ -150,7 +150,7 @@ fn move_chain_is_coalesced_into_one_move() {
     assert!(!source.exists());
     assert!(!middle.exists());
     assert_eq!(fs::read_to_string(&destination).unwrap(), "final\n");
-    let undone = service.undo(&[uuid_from(&applied.render())]);
+    let undone = service.undo(&[id_from(&applied.render())]);
     assert!(undone.succeeded(), "{}", undone.render());
     assert_eq!(fs::read_to_string(source).unwrap(), "source\n");
     assert!(!middle.exists());

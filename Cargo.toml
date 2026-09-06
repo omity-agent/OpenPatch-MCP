@@ -95,7 +95,6 @@ clap = { version = "*", features = ["derive"] }
 diffy = "*"
 diesel = { version = "*", default-features = false, features = ["sqlite"] }
 directories = "*"
-fast-uuid-v7 = "*"
 itoa = "*"
 lz4_flex = { version = "*", default-features = false, features = [
     "checked-decode",
@@ -106,6 +105,8 @@ lz4_flex = { version = "*", default-features = false, features = [
 memchr = "*"
 mimalloc = { version = "*", features = ["v3"] }
 num_enum = "*"
+radix_fmt = "*"
+rand = "*"
 rmcp = { version = "*", features = [
     "client",
     "server",
@@ -126,8 +127,6 @@ tokio = { version = "*", features = [
     "rt-multi-thread",
 ] }
 unicode-normalization = "*"
-uuid = "*"
-uuid-simd = "*"
 
 [dev-dependencies]
 tempfile = "*"

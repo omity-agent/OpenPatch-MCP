@@ -6,16 +6,16 @@ use super::{
     },
     files, reversal,
 };
-pub(crate) fn execute(service: &OperationService, uuid_texts: &[String]) -> OperationOutput {
-    if uuid_texts.is_empty() {
-        return OperationOutput::failed(String::from("uuids must not be empty"));
+pub(crate) fn execute(service: &OperationService, id_texts: &[String]) -> OperationOutput {
+    if id_texts.is_empty() {
+        return OperationOutput::failed(String::from("ids must not be empty"));
     }
     let mut output = OperationOutput::default();
-    let mut targets = Vec::with_capacity(uuid_texts.len());
-    for uuid_text in uuid_texts {
-        match OperationId::parse(uuid_text) {
-            Ok(uuid) => targets.push((uuid_text.clone(), uuid)),
-            Err(error) => output.push_failure(Failure::undo(uuid_text.clone(), error.to_string())),
+    let mut targets = Vec::with_capacity(id_texts.len());
+    for id_text in id_texts {
+        match OperationId::parse(id_text) {
+            Ok(id) => targets.push((id_text.clone(), id)),
+            Err(error) => output.push_failure(Failure::undo(id_text.clone(), error.to_string())),
         }
     }
     let target_ids = targets
@@ -26,22 +26,22 @@ pub(crate) fn execute(service: &OperationService, uuid_texts: &[String]) -> Oper
         Ok(order) => order,
         Err(error) => {
             let reason = error.to_string();
-            for (uuid_text, _) in targets {
-                output.push_failure(Failure::undo(uuid_text, reason.clone()));
+            for (id_text, _) in targets {
+                output.push_failure(Failure::undo(id_text, reason.clone()));
             }
             return output;
         }
     };
     for index in order {
-        let Some((uuid_text, target)) = targets.get(index).cloned() else {
+        let Some((id_text, target)) = targets.get(index).cloned() else {
             output.push_failure(Failure::global(String::from(
                 "undo target ordering returned an invalid index",
             )));
             return output;
         };
         match commit(service, target) {
-            Ok((mutation, uuid)) => output.push_success(success(&mutation, uuid, target)),
-            Err(error) => output.push_failure(Failure::undo(uuid_text, error.to_string())),
+            Ok((mutation, id)) => output.push_success(success(&mutation, id, target)),
+            Err(error) => output.push_failure(Failure::undo(id_text, error.to_string())),
         }
     }
     output
@@ -57,19 +57,19 @@ fn commit(
         service.history.ensure_available(transaction, target)?;
         let stored = super::super::store::HistoryStore::load(transaction, target)?;
         let mutation = reversal::plan(&stored)?;
-        let uuid = service
+        let id = service
             .history
             .consume_and_insert(transaction, target, &mutation)?;
         service.history.prune(transaction)?;
         files::apply(&mutation)?;
         staged = Some(mutation);
         commit_attempted = true;
-        Ok(uuid)
+        Ok(id)
     });
     match result {
-        Ok(uuid) => {
+        Ok(id) => {
             drop(connection);
-            staged.map(|mutation| (mutation, uuid)).ok_or_else(|| {
+            staged.map(|mutation| (mutation, id)).ok_or_else(|| {
                 anyhow::anyhow!("undo transaction committed without a file mutation")
             })
         }
@@ -97,11 +97,11 @@ fn commit(
         }
     }
 }
-fn success(mutation: &Mutation, uuid: OperationId, target: OperationId) -> Success {
+fn success(mutation: &Mutation, id: OperationId, target: OperationId) -> Success {
     let (before, after) = super::logical_stats(mutation);
     Success::new(
         mutation.kind,
-        uuid,
+        id,
         Some(target),
         mutation.display_path.clone(),
         (mutation.kind != OperationKind::Add)

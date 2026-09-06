@@ -1,4 +1,4 @@
-use super::{apply, service, uuid_from};
+use super::{apply, id_from, service};
 use std::fs;
 #[test]
 fn new_file_uses_lf_independently_of_patch_line_endings() {
@@ -127,7 +127,7 @@ fn undo_preserves_crlf_with_an_unrelated_edit() {
         ],
     );
     fs::write(&target, "new\r\nchanged\r\n").unwrap();
-    let undone = service.undo(&[uuid_from(&output)]);
+    let undone = service.undo(&[id_from(&output)]);
     assert!(undone.succeeded(), "{}", undone.render());
     assert_eq!(fs::read_to_string(target).unwrap(), "old\r\nchanged\r\n");
 }
@@ -149,7 +149,7 @@ fn undo_normalizes_mixed_line_endings_to_lf() {
         ],
     );
     fs::write(&target, "new\r\nchanged\n").unwrap();
-    let undone = service.undo(&[uuid_from(&output)]);
+    let undone = service.undo(&[id_from(&output)]);
     assert!(undone.succeeded(), "{}", undone.render());
     assert_eq!(fs::read_to_string(target).unwrap(), "old\nchanged\n");
 }

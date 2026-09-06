@@ -9,6 +9,8 @@ use std::fs;
 mod general;
 #[path = "server/structured.rs"]
 mod structured;
+#[path = "server/undo_protocol.rs"]
+mod undo_protocol;
 use structured::{verify_failure, verify_success};
 #[derive(Clone, Default)]
 struct TestClient;
@@ -57,7 +59,7 @@ async fn openai_style_applies_multiline_patch() {
         .unwrap()
         .text
         .as_str();
-    assert!(content.find("after:").unwrap() < content.find("<UUID>").unwrap());
+    assert!(content.find("after:").unwrap() < content.find("<ID>").unwrap());
     verify_success(&tool_result.structured_content.unwrap(), &target_path);
     let failed_result = call_apply_patch(&client, "").await;
     assert_eq!(failed_result.is_error, Some(true));
@@ -73,7 +75,44 @@ fn verify_schemas(application: &Application, expected_properties: &[&str]) {
     for tool in &tools {
         let schema = sonic_rs::to_string(tool.output_schema.as_ref().unwrap()).unwrap();
         assert!(!schema.contains(r#""format":"uint""#));
+        let output = rmcp::serde_json::to_value(tool.output_schema.as_ref().unwrap()).unwrap();
+        let success = output
+            .pointer("/$defs/SuccessfulOperation/properties")
+            .unwrap();
+        assert_eq!(
+            success.get("id").unwrap().get("pattern").unwrap().as_str(),
+            Some(crate::operation::model::ID_PATTERN)
+        );
+        assert_eq!(
+            success
+                .get("undoOf")
+                .unwrap()
+                .get("pattern")
+                .unwrap()
+                .as_str(),
+            Some(crate::operation::model::ID_PATTERN)
+        );
     }
+    let undo = tools.iter().find(|tool| tool.name == "undo_patch").unwrap();
+    let undo_properties = undo
+        .input_schema
+        .get("properties")
+        .unwrap()
+        .as_object()
+        .unwrap();
+    assert_eq!(
+        undo_properties
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        ["ids"]
+    );
+    let ids = undo_properties.get("ids").unwrap();
+    assert_eq!(ids.get("minItems").unwrap().as_u64(), Some(1));
+    assert_eq!(
+        ids.pointer("/items/pattern").unwrap().as_str(),
+        Some(crate::operation::model::ID_PATTERN)
+    );
     let apply = tools
         .iter()
         .find(|tool| tool.name == "apply_patch")

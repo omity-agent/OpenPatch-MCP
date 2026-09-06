@@ -1,23 +1,23 @@
-use super::{service, uuid_from};
+use super::{id_from, service};
 use crate::operation::store::rows::IntegerValue;
 use diesel::{RunQueryDsl as _, connection::SimpleConnection as _};
 use std::fs;
-fn uuids_from(output: &str) -> Vec<String> {
+fn ids_from(output: &str) -> Vec<String> {
     output
-        .split("<UUID>\n")
+        .split("<ID>\n")
         .skip(1)
-        .map(|part| part.split_once("\n</UUID>").unwrap().0.to_owned())
+        .map(|part| part.split_once("\n</ID>").unwrap().0.to_owned())
         .collect()
 }
-fn two_uuids(output: &str) -> [String; 2] {
-    let mut uuids = uuids_from(output).into_iter();
-    let Some(first) = uuids.next() else {
-        panic!("expected first operation UUID");
+fn two_ids(output: &str) -> [String; 2] {
+    let mut ids = ids_from(output).into_iter();
+    let Some(first) = ids.next() else {
+        panic!("expected first operation ID");
     };
-    let Some(second) = uuids.next() else {
-        panic!("expected second operation UUID");
+    let Some(second) = ids.next() else {
+        panic!("expected second operation ID");
     };
-    assert!(uuids.next().is_none());
+    assert!(ids.next().is_none());
     [first, second]
 }
 #[test]
@@ -33,7 +33,7 @@ fn already_applied_update_can_be_undone_to_patch_before_contents() {
     let applied = service.apply(&patch);
     assert!(applied.succeeded(), "{}", applied.render());
     assert_eq!(fs::read_to_string(&target).unwrap(), "new\n");
-    let undone = service.undo(&[uuid_from(&applied.render())]);
+    let undone = service.undo(&[id_from(&applied.render())]);
     assert!(undone.succeeded(), "{}", undone.render());
     assert_eq!(fs::read_to_string(target).unwrap(), "old from patch\n");
 }
@@ -50,7 +50,7 @@ fn already_applied_add_can_be_undone_to_a_missing_file() {
     let applied = service.apply(&patch);
     assert!(applied.succeeded(), "{}", applied.render());
     assert_eq!(fs::read_to_string(&target).unwrap(), "added\n");
-    let undone = service.undo(&[uuid_from(&applied.render())]);
+    let undone = service.undo(&[id_from(&applied.render())]);
     assert!(undone.succeeded(), "{}", undone.render());
     assert!(!target.exists());
     assert!(undone.render().contains("<DELETE>"));
@@ -69,8 +69,8 @@ fn multiple_hunks_on_one_file_share_one_undo_history_entry() {
     let applied = service.apply(&patch);
     assert!(applied.succeeded(), "{}", applied.render());
     assert_eq!(fs::read_to_string(&target).unwrap(), "three\n");
-    assert_eq!(uuids_from(&applied.render()).len(), 1);
-    let undone = service.undo(&[uuid_from(&applied.render())]);
+    assert_eq!(ids_from(&applied.render()).len(), 1);
+    let undone = service.undo(&[id_from(&applied.render())]);
     assert!(undone.succeeded(), "{}", undone.render());
     assert_eq!(fs::read_to_string(target).unwrap(), "one\n");
 }
@@ -91,8 +91,8 @@ fn failed_hunk_does_not_discard_other_hunks() {
     assert!(!applied.succeeded());
     assert_eq!(fs::read_to_string(&first).unwrap(), "first\n");
     assert_eq!(fs::read_to_string(&second).unwrap(), "second\n");
-    let [first_uuid, second_uuid] = two_uuids(&applied.render());
-    let undone = service.undo(&[first_uuid, second_uuid]);
+    let [first_id, second_id] = two_ids(&applied.render());
+    let undone = service.undo(&[first_id, second_id]);
     assert!(undone.succeeded(), "{}", undone.render());
     assert!(!first.exists());
     assert!(!second.exists());
@@ -121,7 +121,7 @@ fn final_commit_failure_rolls_back_hunks_in_reverse_order() {
     );
     let applied = service.apply(&patch);
     assert!(!applied.succeeded());
-    assert_eq!(uuids_from(&applied.render()), Vec::<String>::new());
+    assert_eq!(ids_from(&applied.render()), Vec::<String>::new());
     assert_eq!(fs::read_to_string(target).unwrap(), "one\n");
     let mut connection = service.history.lock_connection().unwrap();
     let operation_count = diesel::sql_query("SELECT COUNT(*) AS value FROM operations")

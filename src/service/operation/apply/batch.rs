@@ -12,7 +12,7 @@ use diesel::{Connection as _, sqlite::SqliteConnection};
 struct StagedMutation {
     mutation: Mutation,
     observed: FileStates,
-    uuid: OperationId,
+    id: OperationId,
 }
 enum StageFailure {
     Mutation(anyhow::Error),
@@ -88,7 +88,7 @@ pub(super) fn execute(service: &OperationService, hunks: Vec<FileHunk>) -> Opera
     }
     drop(connection);
     for applied in staged {
-        output.push_success(success(&applied.mutation, applied.uuid));
+        output.push_success(success(&applied.mutation, applied.id));
     }
     output
 }
@@ -99,13 +99,13 @@ fn stage_mutation(
 ) -> Result<StagedMutation, StageFailure> {
     let mut files_applied = false;
     let transaction_result = connection.transaction(|savepoint| {
-        let uuid = service.history.insert(savepoint, &planned.mutation, None)?;
+        let id = service.history.insert(savepoint, &planned.mutation, None)?;
         files::apply_observed(&planned.mutation, &planned.observed)?;
         files_applied = true;
-        Ok(uuid)
+        Ok(id)
     });
-    let uuid = match transaction_result {
-        Ok(uuid) => uuid,
+    let id = match transaction_result {
+        Ok(id) => id,
         Err(error) if !files_applied => return Err(StageFailure::Mutation(error)),
         Err(error) => {
             let rollback = files::roll_back_observed(&planned.mutation, &planned.observed);
@@ -121,7 +121,7 @@ fn stage_mutation(
     Ok(StagedMutation {
         mutation: planned.mutation,
         observed: planned.observed,
-        uuid,
+        id,
     })
 }
 fn fail_staged(output: &mut OperationOutput, staged: &[StagedMutation], error: &anyhow::Error) {

@@ -12,10 +12,11 @@ mod line_endings;
 mod replacement;
 #[path = "operation/validation.rs"]
 mod validation;
-fn uuid_from(output: &str) -> String {
-    let (_, after_start) = output.split_once("<UUID>\n").unwrap();
-    let (uuid, _) = after_start.split_once("\n</UUID>").unwrap();
-    uuid.to_owned()
+fn id_from(output: &str) -> String {
+    let (_, after_start) = output.split_once("<ID>\n").unwrap();
+    let (id, _) = after_start.split_once("\n</ID>").unwrap();
+    assert_eq!(OperationId::parse(id).unwrap().to_string(), id);
+    id.to_owned()
 }
 fn apply(service: &OperationService, lines: &[String]) -> String {
     let output = service.apply(&lines.join("\n"));
@@ -24,19 +25,6 @@ fn apply(service: &OperationService, lines: &[String]) -> String {
 }
 fn service(directory: &tempfile::TempDir) -> OperationService {
     OperationService::open(&directory.path().join("history.sqlite3")).unwrap()
-}
-#[test]
-fn operation_ids_require_hyphenated_format() {
-    const UUID: &str = "019d0000-0000-7000-8000-000000000103";
-    let operation_id = OperationId::parse(UUID).unwrap();
-    assert_eq!(operation_id.to_string(), UUID);
-    for invalid_uuid in [
-        "019d0000000070008000000000000103",
-        "019d0000_0000-7000-8000-000000000103",
-    ] {
-        let error = OperationId::parse(invalid_uuid).unwrap_err();
-        assert_eq!(error.to_string(), "invalid UUID");
-    }
 }
 #[test]
 fn edit_undo_preserves_unrelated_changes_and_can_be_undone() {
@@ -56,11 +44,11 @@ fn edit_undo_preserves_unrelated_changes_and_can_be_undone() {
         ],
     );
     fs::write(&target, "new\nkeep changed\n").unwrap();
-    let first_uuid = uuid_from(&applied);
-    let undone = service.undo(core::slice::from_ref(&first_uuid));
+    let first_id = id_from(&applied);
+    let undone = service.undo(core::slice::from_ref(&first_id));
     assert!(undone.succeeded(), "{}", undone.render());
     assert_eq!(fs::read_to_string(&target).unwrap(), "old\nkeep changed\n");
-    let redone = service.undo(&[uuid_from(&undone.render())]);
+    let redone = service.undo(&[id_from(&undone.render())]);
     assert!(redone.succeeded(), "{}", redone.render());
     assert_eq!(fs::read_to_string(target).unwrap(), "new\nkeep changed\n");
 }
@@ -79,7 +67,7 @@ fn undo_add_restores_overwritten_file() {
             String::from("*** End Patch"),
         ],
     );
-    let undone = service.undo(&[uuid_from(&applied)]);
+    let undone = service.undo(&[id_from(&applied)]);
     assert!(undone.succeeded(), "{}", undone.render());
     assert_eq!(fs::read_to_string(target).unwrap(), "original\n");
     assert!(undone.render().contains("<EDIT>"));
@@ -102,11 +90,11 @@ fn undo_move_restores_source_and_overwritten_destination() {
         ],
     );
     fs::write(&destination, "source\nextra\n").unwrap();
-    let undone = service.undo(&[uuid_from(&applied)]);
+    let undone = service.undo(&[id_from(&applied)]);
     assert!(undone.succeeded(), "{}", undone.render());
     assert_eq!(fs::read_to_string(source).unwrap(), "source\nextra\n");
     assert_eq!(fs::read_to_string(&destination).unwrap(), "displaced\n");
-    let redone = service.undo(&[uuid_from(&undone.render())]);
+    let redone = service.undo(&[id_from(&undone.render())]);
     assert!(redone.succeeded(), "{}", redone.render());
     assert!(!directory.path().join("source.txt").exists());
     assert_eq!(fs::read_to_string(destination).unwrap(), "source\nextra\n");
@@ -127,12 +115,12 @@ fn separate_service_instances_share_the_wal_history() {
             String::from("*** End Patch"),
         ],
     );
-    let undone = reader.undo(&[uuid_from(&applied)]);
+    let undone = reader.undo(&[id_from(&applied)]);
     assert!(undone.succeeded(), "{}", undone.render());
     assert!(!target.exists());
 }
 #[test]
-fn batch_undo_keeps_successes_beside_invalid_uuid_failure() {
+fn batch_undo_keeps_successes_beside_invalid_id_failure() {
     let directory = tempfile::tempdir().unwrap();
     let service = service(&directory);
     let first = directory.path().join("first.txt");
@@ -148,18 +136,18 @@ fn batch_undo_keeps_successes_beside_invalid_uuid_failure() {
             String::from("*** End Patch"),
         ],
     );
-    let mut uuid_iterator = applied
-        .split("<UUID>\n")
+    let mut id_iterator = applied
+        .split("<ID>\n")
         .skip(1)
-        .map(|part| part.split_once("\n</UUID>").unwrap().0.to_owned());
-    let Some(first_uuid) = uuid_iterator.next() else {
-        panic!("expected first operation UUID");
+        .map(|part| part.split_once("\n</ID>").unwrap().0.to_owned());
+    let Some(first_id) = id_iterator.next() else {
+        panic!("expected first operation ID");
     };
-    let Some(second_uuid) = uuid_iterator.next() else {
-        panic!("expected second operation UUID");
+    let Some(second_id) = id_iterator.next() else {
+        panic!("expected second operation ID");
     };
-    assert!(uuid_iterator.next().is_none());
-    let result = service.undo(&[first_uuid, String::from("not-a-uuid"), second_uuid]);
+    assert!(id_iterator.next().is_none());
+    let result = service.undo(&[first_id, String::from("not-an-id"), second_id]);
     assert!(!result.succeeded());
     assert!(result.render().contains("<SUCCEEDED>"));
     assert!(result.render().contains("<FAILED>"));

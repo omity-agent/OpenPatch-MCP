@@ -32,8 +32,8 @@ impl OperationService {
     ) -> OperationOutput {
         apply::execute_replacement(self, path, old_string, new_string)
     }
-    pub(crate) fn undo(&self, uuids: &[String]) -> OperationOutput {
-        apply::undo::execute(self, uuids)
+    pub(crate) fn undo(&self, ids: &[String]) -> OperationOutput {
+        apply::undo::execute(self, ids)
     }
 }
 #[cfg(test)]

@@ -16,7 +16,7 @@ pub(super) fn verify_success(structured: &Value, target_path: &Path) {
     success_fields.sort_unstable();
     assert_eq!(
         success_fields,
-        ["after", "before", "kind", "path", "undoOf", "uuid"]
+        ["after", "before", "id", "kind", "path", "undoOf"]
     );
     assert_eq!(success.get("kind").unwrap().as_str(), Some("EDIT"));
     assert_eq!(
@@ -41,7 +41,13 @@ pub(super) fn verify_success(structured: &Value, target_path: &Path) {
             .as_u64(),
         Some(1)
     );
-    assert!(success.get("uuid").unwrap().is_string());
+    let id = success.get("id").unwrap().as_str().unwrap();
+    assert_eq!(
+        crate::operation::model::OperationId::parse(id)
+            .unwrap()
+            .to_string(),
+        id
+    );
     assert!(success.get("undoOf").unwrap().is_null());
     let no_failures: &[Value] = &[];
     assert_eq!(
@@ -77,7 +83,7 @@ pub(super) fn verify_failure(structured: &Value) {
         .as_object()
         .unwrap();
     assert!(failure.get("operation").unwrap().is_null());
-    assert!(failure.get("undoUuid").unwrap().is_null());
+    assert!(failure.get("undoId").unwrap().is_null());
     assert_eq!(
         failure.get("reason").unwrap().as_str(),
         Some("patch must not be empty")

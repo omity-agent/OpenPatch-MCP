@@ -2,6 +2,10 @@ use super::{HistoryStore, rows::IntegerValue};
 use crate::operation::model::{FileState, Mutation, OperationKind};
 use diesel::{RunQueryDsl as _, sql_types::Binary};
 use std::path::PathBuf;
+#[path = "persistence/allocation.rs"]
+mod allocation;
+#[path = "persistence/integrity.rs"]
+mod integrity;
 fn present(contents: &str) -> FileState {
     FileState::present(contents.to_owned())
 }

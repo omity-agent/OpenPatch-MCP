@@ -3,7 +3,7 @@ OpenPatch 用于向 MCP 客户端提供文件编辑功能。
 暴露两个工具：
 
 - `apply_patch`：编辑文件。
-- `undo_patch`：撤回补丁。输入 Patch 的 UUID。
+- `undo_patch`：撤回补丁。输入 Patch 的 ID。
 
 输入格式：
 
@@ -15,7 +15,7 @@ OpenPatch 与 OpenAI Apply Patch 工具存在一定差异，包括：
 - 更激进的模糊匹配。
 - 允许部分成功。
 - 经过重新设计的 XML-Like 输出格式。
-- `undo_patch` 工具和 UUID 机制。
+- `undo_patch` 工具和 ID 机制。
 
 意在提供更高效和强大的文件编辑能力。
 

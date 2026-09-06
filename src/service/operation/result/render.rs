@@ -29,9 +29,9 @@ fn push_success(output: &mut String, success: &Success) {
     if let Some(after) = success.after {
         push_stats(output, "after", after);
     }
-    push_uuid(output, "UUID", &success.uuid);
+    push_id(output, "ID", &success.id);
     if let Some(undo_of) = success.undo_of.as_deref() {
-        push_uuid(output, "UNDO_OF", undo_of);
+        push_id(output, "UNDO_OF", undo_of);
     }
     push_end(output, success.kind.tag());
 }
@@ -40,10 +40,10 @@ fn push_failure(output: &mut String, failure: &Failure) {
         push_start(output, operation.kind.tag(), &operation.path);
         push_reason(output, &failure.reason);
         push_end(output, operation.kind.tag());
-    } else if let Some(uuid) = failure.undo_uuid.as_ref() {
-        output.push_str("<UNDO>\n<UUID>\n");
-        output.push_str(uuid);
-        output.push_str("\n</UUID>\n");
+    } else if let Some(id) = failure.undo_id.as_ref() {
+        output.push_str("<UNDO>\n<ID>\n");
+        output.push_str(id);
+        output.push_str("\n</ID>\n");
         push_reason(output, &failure.reason);
         output.push_str("</UNDO>\n");
     } else {
@@ -60,8 +60,8 @@ fn push_end(output: &mut String, tag: &str) {
         panic!("writing to String failed: {error}");
     }
 }
-fn push_uuid(output: &mut String, tag: &str, uuid: &str) {
-    if let Err(error) = writeln!(output, "<{tag}>\n{uuid}\n</{tag}>") {
+fn push_id(output: &mut String, tag: &str, id: &str) {
+    if let Err(error) = writeln!(output, "<{tag}>\n{id}\n</{tag}>") {
         panic!("writing to String failed: {error}");
     }
 }

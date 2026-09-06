@@ -67,7 +67,13 @@ fn verify_replacement_success(structured: &rmcp::serde_json::Value, target_path:
             .as_u64(),
         Some(3)
     );
-    assert!(success.get("uuid").unwrap().is_string());
+    let id = success.get("id").unwrap().as_str().unwrap();
+    assert_eq!(
+        crate::operation::model::OperationId::parse(id)
+            .unwrap()
+            .to_string(),
+        id
+    );
 }
 async fn call_replace(
     client: &rmcp::service::RunningService<rmcp::RoleClient, TestClient>,

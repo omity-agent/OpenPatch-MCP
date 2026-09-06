@@ -76,13 +76,15 @@ pub(super) struct Success {
     path: String,
     before: Option<FileStats>,
     after: Option<FileStats>,
-    uuid: String,
+    # [schemars (regex (pattern = super :: model :: ID_PATTERN))]
+    id: String,
+    # [schemars (regex (pattern = super :: model :: ID_PATTERN))]
     undo_of: Option<String>,
 }
 impl Success {
     pub(super) fn new(
         kind: OperationKind,
-        uuid: OperationId,
+        id: OperationId,
         undo_of: Option<OperationId>,
         path: PathBuf,
         before: Option<FileStats>,
@@ -93,7 +95,7 @@ impl Success {
             path: display_path(path),
             before,
             after,
-            uuid: uuid.to_string(),
+            id: id.to_string(),
             undo_of: undo_of.map(|value| value.to_string()),
         }
     }
@@ -103,7 +105,7 @@ impl Success {
 # [schemars (rename = "OperationFailure" , rename_all = "camelCase" , deny_unknown_fields , transform = require_failure_fields)]
 pub(super) struct Failure {
     operation: Option<FailedOperation>,
-    undo_uuid: Option<String>,
+    undo_id: Option<String>,
     reason: String,
 }
 #[derive(Debug, Serialize, JsonSchema)]
@@ -119,21 +121,21 @@ impl Failure {
                 kind,
                 path: display_path(path),
             }),
-            undo_uuid: None,
+            undo_id: None,
             reason,
         }
     }
-    pub(super) const fn undo(uuid: String, reason: String) -> Self {
+    pub(super) const fn undo(id: String, reason: String) -> Self {
         Self {
             operation: None,
-            undo_uuid: Some(uuid),
+            undo_id: Some(id),
             reason,
         }
     }
     pub(super) const fn global(reason: String) -> Self {
         Self {
             operation: None,
-            undo_uuid: None,
+            undo_id: None,
             reason,
         }
     }
@@ -144,13 +146,13 @@ fn remove_integer_format(schema: &mut Schema) {
 fn require_success_fields(schema: &mut Schema) {
     schema.insert(
         String::from("required"),
-        required_fields(&["kind", "path", "before", "after", "uuid", "undoOf"]),
+        required_fields(&["kind", "path", "before", "after", "id", "undoOf"]),
     );
 }
 fn require_failure_fields(schema: &mut Schema) {
     schema.insert(
         String::from("required"),
-        required_fields(&["operation", "undoUuid", "reason"]),
+        required_fields(&["operation", "undoId", "reason"]),
     );
 }
 fn required_fields(fields: &[&str]) -> rmcp::serde_json::Value {

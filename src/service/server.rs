@@ -30,7 +30,8 @@ pub struct ReplaceRequest {
 }
 #[derive(Debug, Deserialize, schemars :: JsonSchema)]
 pub struct UndoPatchRequest {
-    pub uuids: Vec<String>,
+    # [schemars (length (min = 1) , inner (regex (pattern = crate :: operation :: model :: ID_PATTERN)))]
+    pub ids: Vec<String>,
 }
 impl Application {
     #[inline]
@@ -69,17 +70,17 @@ impl Application {
             .replace(&request.path, &request.old_string, &request.new_string);
         to_tool_result(&output)
     }
-    # [tool (name = "undo_patch" , description = "Undo recorded patch operations. The input order does not matter. When you want to undo changes, always use the `undo_patch` tool instead of manually rewriting them. The tool is more efficient and ensures that the undoed content are exactly the same as the original." , output_schema = rmcp :: handler :: server :: tool :: schema_for_type ::< crate :: operation :: PatchToolOutput > ())]
+    # [tool (name = "undo_patch" , description = "Undo recorded patch operations using IDs in the format oppc-xxxxxxxx (8 lowercase Base36 digits). The input order does not matter. When you want to undo changes, always use the `undo_patch` tool instead of manually rewriting them. The tool is more efficient and ensures that the undoed content are exactly the same as the original." , output_schema = rmcp :: handler :: server :: tool :: schema_for_type ::< crate :: operation :: PatchToolOutput > ())]
     async fn undo_patch(
         &self,
         Parameters(request): Parameters<UndoPatchRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let output = self.service.undo(&request.uuids);
+        let output = self.service.undo(&request.ids);
         to_tool_result(&output)
     }
 }
 fn add_apply_route(router: &mut ToolRouter<Application>, style: InputStyle) -> anyhow::Result<()> {
-    match style { InputStyle :: General => router . add_route (ToolRoute :: new (apply_tool :: < ReplaceRequest > ("Replace an exact string in a file. Each edit is assigned a UUID." ,) ? , Application :: apply_general ,)) , InputStyle :: Openai => router . add_route (ToolRoute :: new (apply_tool :: < ApplyPatchRequest > ("The `apply_patch` tool can be used to edit files. Each patch will be assigned a UUID. This is a FREEFORM tool, so do not wrap the patch in JSON." ,) ? , Application :: apply_openai ,)) , }
+    match style { InputStyle :: General => router . add_route (ToolRoute :: new (apply_tool :: < ReplaceRequest > ("Replace an exact string in a file. Each edit is assigned an ID in the format oppc-xxxxxxxx (8 lowercase Base36 digits)." ,) ? , Application :: apply_general ,)) , InputStyle :: Openai => router . add_route (ToolRoute :: new (apply_tool :: < ApplyPatchRequest > ("The `apply_patch` tool can be used to edit files. Each patch is assigned an ID in the format oppc-xxxxxxxx (8 lowercase Base36 digits). This is a FREEFORM tool, so do not wrap the patch in JSON." ,) ? , Application :: apply_openai ,)) , }
     Ok(())
 }
 fn apply_tool<Request>(description: &'static str) -> anyhow::Result<Tool>

@@ -1,7 +1,3 @@
-#![expect(
-    clippy::redundant_field_names,
-    reason = "Diesel's QueryableByName derive generates explicit field names"
-)]
 use diesel::{
     QueryableByName,
     sql_types::{BigInt, Binary, Nullable, Text},
@@ -24,8 +20,8 @@ pub(super) struct StoredFile {
 }
 #[derive(QueryableByName)]
 pub(super) struct UndoneBy {
-    # [diesel (sql_type = Nullable < Binary >)]
-    pub(super) undone_by: Option<Vec<u8>>,
+    # [diesel (sql_type = Nullable < BigInt >)]
+    pub(super) undone_by: Option<i64>,
 }
 #[derive(QueryableByName)]
 pub(crate) struct IntegerValue {
