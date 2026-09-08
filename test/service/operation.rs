@@ -8,6 +8,8 @@ mod coalescing;
 mod history;
 #[path = "operation/line_endings.rs"]
 mod line_endings;
+#[path = "operation/relocation.rs"]
+mod relocation;
 #[path = "operation/replacement.rs"]
 mod replacement;
 #[path = "operation/validation.rs"]
@@ -17,6 +19,13 @@ fn id_from(output: &str) -> String {
     let (id, _) = after_start.split_once("\n</ID>").unwrap();
     assert_eq!(OperationId::parse(id).unwrap().to_string(), id);
     id.to_owned()
+}
+fn ids_from(output: &str) -> Vec<String> {
+    output
+        .split("<ID>\n")
+        .skip(1)
+        .map(|part| part.split_once("\n</ID>").unwrap().0.to_owned())
+        .collect()
 }
 fn apply(service: &OperationService, lines: &[String]) -> String {
     let output = service.apply(&lines.join("\n"));
@@ -89,13 +98,16 @@ fn undo_move_restores_source_and_overwritten_destination() {
             String::from("*** End Patch"),
         ],
     );
+    assert!(applied.contains("<MOVE>"));
     fs::write(&destination, "source\nextra\n").unwrap();
     let undone = service.undo(&[id_from(&applied)]);
     assert!(undone.succeeded(), "{}", undone.render());
+    assert!(undone.render().contains("<MOVE>"));
     assert_eq!(fs::read_to_string(source).unwrap(), "source\nextra\n");
     assert_eq!(fs::read_to_string(&destination).unwrap(), "displaced\n");
     let redone = service.undo(&[id_from(&undone.render())]);
     assert!(redone.succeeded(), "{}", redone.render());
+    assert!(redone.render().contains("<MOVE>"));
     assert!(!directory.path().join("source.txt").exists());
     assert_eq!(fs::read_to_string(destination).unwrap(), "source\nextra\n");
 }

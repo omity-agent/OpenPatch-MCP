@@ -55,6 +55,7 @@ pub(crate) enum OperationKind {
     Add = 0,
     Edit = 1,
     Delete = 2,
+    Move = 3,
 }
 impl OperationKind {
     pub(super) const fn tag(self) -> &'static str {
@@ -62,6 +63,7 @@ impl OperationKind {
             Self::Add => "ADD",
             Self::Edit => "EDIT",
             Self::Delete => "DELETE",
+            Self::Move => "MOVE",
         }
     }
 }
@@ -108,24 +110,23 @@ impl Mutation {
     pub(crate) fn moved(
         source: PathBuf,
         destination: PathBuf,
-        source_before: FileState,
+        contents: FileState,
         destination_before: FileState,
-        destination_after: FileState,
     ) -> Self {
         Self {
-            kind: OperationKind::Edit,
+            kind: OperationKind::Move,
             display_path: destination.clone(),
             changes: smallvec![
                 PathChange {
                     role: PathRole::Destination,
                     path: destination,
                     before: destination_before,
-                    after: destination_after,
+                    after: contents.clone(),
                 },
                 PathChange {
                     role: PathRole::Source,
                     path: source,
-                    before: source_before,
+                    before: contents,
                     after: FileState::Missing,
                 },
             ],

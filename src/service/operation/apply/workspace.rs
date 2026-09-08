@@ -24,6 +24,8 @@ pub(super) struct Workspace {
     pub(super) files: Vec<VirtualFile>,
     pub(super) indices: FxHashMap<PathBuf, usize>,
     pub(super) mutation_count: usize,
+    pub(super) completed: Vec<PlannedMutation>,
+    moving: Option<bool>,
 }
 pub(super) struct VirtualFile {
     pub(super) path: PathBuf,
@@ -33,11 +35,29 @@ pub(super) struct VirtualFile {
     pub(super) logical_before: Option<FileState>,
     pub(super) first_order: usize,
 }
+#[expect(
+    clippy::pattern_type_mismatch,
+    reason = "the hunk remains borrowed while its source path is cloned for chunk diagnostics"
+)]
 pub(super) fn plan(hunks: Vec<FileHunk>) -> BatchPlan {
     let mut workspace = Workspace::default();
     let mut failures = Vec::new();
     for hunk in hunks {
         let (kind, path) = crate::patch::hunk_context(&hunk);
+        let chunk_path = match &hunk {
+            FileHunk::Add {
+                path: source,
+                contents: _,
+                line_count: _,
+                character_count: _,
+            }
+            | FileHunk::Delete { path: source }
+            | FileHunk::Update {
+                path: source,
+                move_path: _,
+                chunks: _,
+            } => source.clone(),
+        };
         let planned = crate::patch::plan_hunk(hunk, &mut |snapshot_path, action| {
             workspace.snapshot(snapshot_path, action)
         });
@@ -46,18 +66,21 @@ pub(super) fn plan(hunks: Vec<FileHunk>) -> BatchPlan {
                 for reason in planned_hunk.chunk_errors {
                     failures.push(PlanningFailure {
                         kind: OperationKind::Edit,
-                        path: path.clone(),
+                        path: chunk_path.clone(),
                         reason,
                     });
                 }
-                if let Some(mutation) = planned_hunk.mutation
-                    && let Err(error) = workspace.record(mutation)
-                {
-                    failures.push(PlanningFailure {
-                        kind,
-                        path,
-                        reason: error.to_string(),
-                    });
+                for mutation in planned_hunk.mutations {
+                    let mutation_kind = mutation.kind;
+                    let mutation_path = mutation.display_path.clone();
+                    if let Err(error) = workspace.record(mutation) {
+                        failures.push(PlanningFailure {
+                            kind: mutation_kind,
+                            path: mutation_path,
+                            reason: error.to_string(),
+                        });
+                        break;
+                    }
                 }
             }
             Err(error) => failures.push(PlanningFailure {
@@ -99,6 +122,11 @@ impl Workspace {
         Ok(observed)
     }
     fn record(&mut self, mutation: Mutation) -> anyhow::Result<()> {
+        let moving = mutation.kind == OperationKind::Move;
+        if self.moving.is_some_and(|previous| previous != moving) {
+            self.flush();
+        }
+        self.moving = Some(moving);
         let order = self.mutation_count;
         self.mutation_count = self
             .mutation_count

@@ -3,7 +3,7 @@ use std::fs;
 fn assert_single_kind(output: &str, kind: &str) {
     assert_eq!(output.matches("<ID>").count(), 1, "{output}");
     assert!(output.contains(&format!("<{kind}>")), "{output}");
-    for other in ["ADD", "EDIT", "DELETE"] {
+    for other in ["ADD", "EDIT", "DELETE", "MOVE"] {
         if other != kind {
             assert!(!output.contains(&format!("<{other}>")), "{output}");
         }
@@ -135,9 +135,6 @@ fn move_chain_is_coalesced_into_one_move() {
 *** Move to: {}
 *** Update File: {}
 *** Move to: {}
-@@
--source
-+final
 *** End Patch",
         source.display(),
         middle.display(),
@@ -146,12 +143,13 @@ fn move_chain_is_coalesced_into_one_move() {
     );
     let applied = service.apply(&patch);
     assert!(applied.succeeded(), "{}", applied.render());
-    assert_single_kind(&applied.render(), "EDIT");
+    assert_single_kind(&applied.render(), "MOVE");
     assert!(!source.exists());
     assert!(!middle.exists());
-    assert_eq!(fs::read_to_string(&destination).unwrap(), "final\n");
+    assert_eq!(fs::read_to_string(&destination).unwrap(), "source\n");
     let undone = service.undo(&[id_from(&applied.render())]);
     assert!(undone.succeeded(), "{}", undone.render());
+    assert_single_kind(&undone.render(), "MOVE");
     assert_eq!(fs::read_to_string(source).unwrap(), "source\n");
     assert!(!middle.exists());
     assert_eq!(fs::read_to_string(destination).unwrap(), "destination\n");

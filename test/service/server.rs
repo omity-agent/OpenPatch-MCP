@@ -76,6 +76,10 @@ fn verify_schemas(application: &Application, expected_properties: &[&str]) {
         let schema = sonic_rs::to_string(tool.output_schema.as_ref().unwrap()).unwrap();
         assert!(!schema.contains(r#""format":"uint""#));
         let output = rmcp::serde_json::to_value(tool.output_schema.as_ref().unwrap()).unwrap();
+        assert_eq!(
+            output.pointer("/$defs/OutputOperationKind/enum").unwrap(),
+            &rmcp::serde_json::json!(["ADD", "EDIT", "DELETE", "MOVE"])
+        );
         let success = output
             .pointer("/$defs/SuccessfulOperation/properties")
             .unwrap();

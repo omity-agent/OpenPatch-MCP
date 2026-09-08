@@ -1,4 +1,4 @@
-use super::{HistoryStore, IntegerValue, store};
+use super::{HistoryStore, store};
 use crate::operation::{
     model::{FileState, Mutation, OperationId, OperationKind},
     store::{for_undo, recording::reserve},
@@ -34,11 +34,6 @@ fn schema_accepts_only_in_range_integer_ids_and_references() {
             );
         }
     }
-    let version = diesel::sql_query("SELECT user_version AS value FROM pragma_user_version")
-        .get_result::<IntegerValue>(&mut *connection)
-        .unwrap()
-        .value;
-    assert_eq!(version, 2);
     drop(connection);
 }
 #[test]

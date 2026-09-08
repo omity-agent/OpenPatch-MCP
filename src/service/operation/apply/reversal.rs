@@ -44,7 +44,7 @@ fn plan_move(stored: &StoredOperation) -> anyhow::Result<Mutation> {
     };
     let restored = merge::reverse_contents(before_contents, after_contents, current_contents)?;
     Ok(Mutation {
-        kind: OperationKind::Edit,
+        kind: OperationKind::Move,
         display_path: source.path.clone(),
         changes: smallvec![
             PathChange {
@@ -81,6 +81,9 @@ fn reverse_state(
             after_contents,
             current_contents,
         )?)),
+        (FileState::Present(_), FileState::Present(_), FileState::Missing) => {
+            anyhow::bail!("edited file no longer exists at its recorded path")
+        }
         (
             FileState::Missing,
             FileState::Present(after_contents),

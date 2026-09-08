@@ -9,14 +9,18 @@ struct OrderedMutation {
     order: usize,
 }
 impl Workspace {
-    pub(super) fn finish(self) -> Vec<PlannedMutation> {
+    pub(super) fn finish(mut self) -> Vec<PlannedMutation> {
+        self.flush();
+        self.completed
+    }
+    pub(super) fn flush(&mut self) {
         let mut claimed = FxHashSet::default();
         let mut ordered = self.moves(&mut claimed);
-        for file in self.files {
+        for file in &self.files {
             if claimed.contains(&file.path) {
                 continue;
             }
-            let Some(before) = effective_before(&file).cloned() else {
+            let Some(before) = effective_before(file).cloned() else {
                 continue;
             };
             if before == file.current {
@@ -26,17 +30,23 @@ impl Workspace {
                 planned: PlannedMutation {
                     mutation: Mutation::single(
                         transition_kind(&before, &file.current),
-                        file.path,
+                        file.path.clone(),
                         before,
-                        file.current,
+                        file.current.clone(),
                     ),
-                    observed: smallvec![file.observed],
+                    observed: smallvec![file.observed.clone()],
                 },
                 order: file.first_order,
             });
         }
         ordered.sort_by_key(|entry| entry.order);
-        ordered.into_iter().map(|entry| entry.planned).collect()
+        self.completed
+            .extend(ordered.into_iter().map(|entry| entry.planned));
+        for file in &mut self.files {
+            file.observed = file.current.clone();
+            file.origin = matches!(file.current, FileState::Present(_)).then(|| file.path.clone());
+            file.logical_before = None;
+        }
     }
     fn moves(&self, claimed: &mut FxHashSet<std::path::PathBuf>) -> Vec<OrderedMutation> {
         let mut ordered = Vec::new();
@@ -73,7 +83,6 @@ impl Workspace {
                         destination.path.clone(),
                         source_before.clone(),
                         destination_before.clone(),
-                        destination.current.clone(),
                     ),
                     observed: smallvec![destination.observed.clone(), source.observed.clone()],
                 },

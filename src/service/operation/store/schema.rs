@@ -1,6 +1,5 @@
 use anyhow::Context as _;
 use diesel::{RunQueryDsl as _, connection::SimpleConnection as _, sqlite::SqliteConnection};
-const VERSION: i64 = 2;
 const CREATE_SCHEMA: &str = "
 CREATE TABLE history_blobs (
     digest BLOB PRIMARY KEY CHECK(typeof(digest) = 'blob' AND length(digest) = 32),
@@ -12,7 +11,7 @@ CREATE TABLE history_blobs (
 CREATE TABLE operations (
     sequence INTEGER PRIMARY KEY,
     id INTEGER NOT NULL UNIQUE CHECK(typeof(id) = 'integer' AND id BETWEEN 0 AND 2821109907455),
-    kind INTEGER NOT NULL CHECK(kind BETWEEN 0 AND 2),
+    kind INTEGER NOT NULL CHECK(kind BETWEEN 0 AND 3),
     display_path BLOB NOT NULL CHECK(typeof(display_path) = 'blob'),
     undo_of INTEGER CHECK(undo_of IS NULL OR
         (typeof(undo_of) = 'integer' AND undo_of BETWEEN 0 AND 2821109907455)),
@@ -37,42 +36,18 @@ CREATE INDEX operation_files_after_digest ON operation_files(after_digest)
     WHERE after_digest IS NOT NULL;
 ";
 pub(super) fn initialize(connection: &mut SqliteConnection) -> anyhow::Result<()> {
-    let version = user_version(connection)?;
-    match version {
-        VERSION => validate(connection),
-        0 => create(connection),
-        other => anyhow::bail!("unsupported operation history schema version: {other}"),
-    }
-}
-fn user_version(connection: &mut SqliteConnection) -> anyhow::Result<i64> {
-    Ok(
-        diesel::sql_query("SELECT user_version AS value FROM pragma_user_version")
-            .get_result::<super::rows::IntegerValue>(connection)?
-            .value,
-    )
-}
-fn create(connection: &mut SqliteConnection) -> anyhow::Result<()> {
     connection.immediate_transaction(|transaction| {
-        let version = user_version(transaction)?;
-        if version == VERSION {
-            return validate(transaction);
-        }
-        anyhow::ensure!(
-            version == 0,
-            "operation history schema changed while opening"
-        );
         let table_count = diesel::sql_query(
             "SELECT COUNT(*) AS value FROM sqlite_schema
              WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
         )
         .get_result::<super::rows::IntegerValue>(transaction)?
         .value;
-        anyhow::ensure!(
-            table_count == 0,
-            "operation history uses an incompatible unversioned schema"
-        );
-        transaction.batch_execute(CREATE_SCHEMA)?;
-        transaction.batch_execute(&format!("PRAGMA user_version = {VERSION}"))?;
+        if table_count == 0 {
+            transaction.batch_execute(CREATE_SCHEMA)?;
+        } else {
+            validate(transaction)?;
+        }
         Ok(())
     })
 }

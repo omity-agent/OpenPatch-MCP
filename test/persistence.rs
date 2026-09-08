@@ -22,7 +22,6 @@ fn states_round_trip_and_shared_contents_are_stored_once() {
         PathBuf::from("destination.txt"),
         present(shared),
         present("displaced\n"),
-        present(shared),
     );
     let mut connection = store.lock_connection().unwrap();
     connection

@@ -1,7 +1,7 @@
+mod aggregation;
 mod batch;
 pub(crate) mod files;
 mod merge;
-mod planning;
 mod reversal;
 pub(super) mod undo;
 mod workspace;
