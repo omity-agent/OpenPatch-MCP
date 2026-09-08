@@ -10,11 +10,9 @@ async fn undo_accepts_ids_and_reports_short_ids_in_both_output_formats() {
     let directory = tempfile::tempdir().unwrap();
     let target = directory.path().join("undo-target.txt");
     fs::write(&target, "before\n").unwrap();
-    let application = Application::with_database(
-        &directory.path().join("protocol.sqlite3"),
-        InputStyle::Openai,
-    )
-    .unwrap();
+    let application =
+        Application::with_database(&directory.path().join("protocol.lmdb"), InputStyle::Openai)
+            .unwrap();
     let (server_transport, client_transport) = tokio::io::duplex(8192);
     let server_handle = tokio::spawn(async move {
         let service = ServiceExt::serve(application, server_transport).await?;

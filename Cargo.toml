@@ -93,8 +93,8 @@ blake3 = "*"
 bytecount = "*"
 clap = { version = "*", features = ["derive"] }
 diffy = "*"
-diesel = { version = "*", default-features = false, features = ["sqlite"] }
 directories = "*"
+heed = { version = "*", default-features = false, features = ["serde-rmp"] }
 itoa = "*"
 lz4_flex = { version = "*", default-features = false, features = [
     "checked-decode",
@@ -104,7 +104,6 @@ lz4_flex = { version = "*", default-features = false, features = [
 ] }
 memchr = "*"
 mimalloc = { version = "*", features = ["v3"] }
-num_enum = "*"
 radix_fmt = "*"
 rand = "*"
 rmcp = { version = "*", features = [
@@ -113,10 +112,10 @@ rmcp = { version = "*", features = [
     "macros",
     "transport-io",
 ] }
-libsqlite3-sys = { version = "*", features = ["bundled"] }
 rustc-hash = "*"
 schemars = "*"
 serde = { version = "*", features = ["derive", "unstable"] }
+serde_bytes = "*"
 shellexpand = "*"
 smallvec = "*"
 sonic-rs = "*"

@@ -9,11 +9,9 @@ async fn replaces_a_string() {
     let directory = tempfile::tempdir().unwrap();
     let target_path = directory.path().join("target.txt");
     fs::write(&target_path, "before\nold text\nafter\n").unwrap();
-    let application = Application::with_database(
-        &directory.path().join("history.sqlite3"),
-        InputStyle::General,
-    )
-    .unwrap();
+    let application =
+        Application::with_database(&directory.path().join("history.lmdb"), InputStyle::General)
+            .unwrap();
     verify_schemas(&application, &["new_string", "old_string", "path"]);
     let (server_transport, client_transport) = tokio::io::duplex(8192);
     let server_handle = tokio::spawn(async move {

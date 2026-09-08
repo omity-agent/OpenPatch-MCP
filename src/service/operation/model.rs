@@ -1,10 +1,9 @@
 pub(crate) use super::file_state::{FileContents, FileState};
 use anyhow::Context as _;
 use core::fmt;
-use num_enum::{IntoPrimitive, TryFromPrimitive};
 use rmcp::schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
-use sonic_rs::Serialize;
 use std::path::PathBuf;
 pub(crate) const ID_PATTERN: &str = "^oppc-[0-9a-z]{8}$";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,7 +46,7 @@ impl fmt::Display for OperationId {
 #[cfg(test)]
 #[path = "../../../test/identifiers.rs"]
 mod identifier_tests;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema, IntoPrimitive)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[repr(i64)]
 #[serde(rename_all = "UPPERCASE")]
 #[schemars(rename = "OutputOperationKind", rename_all = "UPPERCASE")]
@@ -67,7 +66,7 @@ impl OperationKind {
         }
     }
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, TryFromPrimitive)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(i64)]
 pub(crate) enum PathRole {
     Single = 0,

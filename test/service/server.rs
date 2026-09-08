@@ -24,11 +24,9 @@ async fn openai_style_applies_multiline_patch() {
     let directory = tempfile::tempdir().unwrap();
     let target_path = directory.path().join("target.txt");
     fs::write(&target_path, "old\n").unwrap();
-    let application = Application::with_database(
-        &directory.path().join("history.sqlite3"),
-        InputStyle::Openai,
-    )
-    .unwrap();
+    let application =
+        Application::with_database(&directory.path().join("history.lmdb"), InputStyle::Openai)
+            .unwrap();
     verify_schemas(&application, &["patch"]);
     let (server_transport, client_transport) = tokio::io::duplex(8192);
     let server_handle = tokio::spawn(async move {

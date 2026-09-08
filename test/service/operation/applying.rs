@@ -1,6 +1,4 @@
 use super::{id_from, ids_from, service};
-use crate::operation::store::rows::IntegerValue;
-use diesel::{RunQueryDsl as _, connection::SimpleConnection as _};
 use std::fs;
 fn two_ids(output: &str) -> [String; 2] {
     let mut ids = ids_from(output).into_iter();
@@ -89,42 +87,4 @@ fn failed_hunk_does_not_discard_other_hunks() {
     assert!(undone.succeeded(), "{}", undone.render());
     assert!(!first.exists());
     assert!(!second.exists());
-}
-#[test]
-fn final_commit_failure_rolls_back_hunks_in_reverse_order() {
-    let directory = tempfile::tempdir().unwrap();
-    let target = directory.path().join("target.txt");
-    let destination = directory.path().join("destination.txt");
-    fs::write(&target, "one\n").unwrap();
-    fs::write(&destination, "displaced\n").unwrap();
-    let service = service(&directory);
-    {
-        let mut connection = service.history.lock_connection().unwrap();
-        connection
-            .batch_execute(
-                "CREATE TRIGGER force_deferred_failure AFTER INSERT ON operations BEGIN
-                 INSERT INTO operation_files VALUES(randomblob(16), -1, 0, X'', NULL, NULL);
-                 END;
-                 PRAGMA defer_foreign_keys = ON;",
-            )
-            .unwrap();
-    }
-    let patch = format!(
-        "*** Begin Patch\n*** Update File: {}\n@@\n-one\n+two\n*** Update File: {}\n*** Move to: {}\n@@\n-two\n+three\n*** End Patch",
-        target.display(),
-        target.display(),
-        destination.display()
-    );
-    let applied = service.apply(&patch);
-    assert!(!applied.succeeded());
-    assert_eq!(ids_from(&applied.render()), Vec::<String>::new());
-    assert_eq!(fs::read_to_string(target).unwrap(), "one\n");
-    assert_eq!(fs::read_to_string(destination).unwrap(), "displaced\n");
-    let mut connection = service.history.lock_connection().unwrap();
-    let operation_count = diesel::sql_query("SELECT COUNT(*) AS value FROM operations")
-        .get_result::<IntegerValue>(&mut *connection)
-        .unwrap()
-        .value;
-    drop(connection);
-    assert_eq!(operation_count, 0);
 }

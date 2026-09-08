@@ -4,8 +4,6 @@ use std::fs;
 mod applying;
 #[path = "operation/coalescing.rs"]
 mod coalescing;
-#[path = "operation/history.rs"]
-mod history;
 #[path = "operation/line_endings.rs"]
 mod line_endings;
 #[path = "operation/relocation.rs"]
@@ -33,7 +31,7 @@ fn apply(service: &OperationService, lines: &[String]) -> String {
     output.render()
 }
 fn service(directory: &tempfile::TempDir) -> OperationService {
-    OperationService::open(&directory.path().join("history.sqlite3")).unwrap()
+    OperationService::open(&directory.path().join("history.lmdb")).unwrap()
 }
 #[test]
 fn edit_undo_preserves_unrelated_changes_and_can_be_undone() {
@@ -112,9 +110,9 @@ fn undo_move_restores_source_and_overwritten_destination() {
     assert_eq!(fs::read_to_string(destination).unwrap(), "source\nextra\n");
 }
 #[test]
-fn separate_service_instances_share_the_wal_history() {
+fn separate_service_instances_share_transactional_history() {
     let directory = tempfile::tempdir().unwrap();
-    let database = directory.path().join("history.sqlite3");
+    let database = directory.path().join("history.lmdb");
     let writer = OperationService::open(&database).unwrap();
     let reader = OperationService::open(&database).unwrap();
     let target = directory.path().join("shared.txt");

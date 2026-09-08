@@ -7,19 +7,25 @@ pub(crate) use result::{OperationOutput, PatchToolOutput};
 use store::HistoryStore;
 #[derive(Debug, Clone)]
 pub(crate) struct OperationService {
-    history: HistoryStore,
+    history: alloc::sync::Arc<HistoryStore>,
 }
 impl OperationService {
     pub(crate) fn open_default() -> anyhow::Result<Self> {
-        Ok(Self {
-            history: HistoryStore::open_default()?,
-        })
+        Self::from_history(HistoryStore::open_default()?)
     }
     #[cfg(test)]
     pub(crate) fn open(database_path: &std::path::Path) -> anyhow::Result<Self> {
-        Ok(Self {
-            history: HistoryStore::open(database_path)?,
-        })
+        Self::from_history(HistoryStore::open(database_path)?)
+    }
+    fn from_history(history: alloc::sync::Arc<HistoryStore>) -> anyhow::Result<Self> {
+        let service = Self { history };
+        drop(service.begin()?);
+        Ok(service)
+    }
+    fn begin(&self) -> anyhow::Result<std::fs::File> {
+        let guard = self.history.lock()?;
+        apply::durable::resume(&self.history)?;
+        Ok(guard)
     }
     pub(crate) fn apply(&self, patch: &str) -> OperationOutput {
         apply::execute(self, patch)

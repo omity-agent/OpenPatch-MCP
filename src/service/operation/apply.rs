@@ -1,5 +1,6 @@
 mod aggregation;
 mod batch;
+pub(super) mod durable;
 pub(crate) mod files;
 mod merge;
 mod reversal;
