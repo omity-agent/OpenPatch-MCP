@@ -2,7 +2,7 @@ use super::HistoryStore;
 use alloc::sync::{Arc, Weak};
 use anyhow::Context as _;
 use directories::ProjectDirs;
-use heed::EnvOpenOptions;
+use heed::{CommitOrAbort, EnvOpenOptions};
 use rustc_hash::FxHashMap;
 use std::{
     fs::{self, File},
@@ -69,18 +69,29 @@ impl HistoryStore {
         if stale_readers != 0 {
             eprintln!("warning: cleared {stale_readers} stale history readers");
         }
-        let mut transaction = env.write_txn()?;
+        let transaction = env.write_txn()?;
+        let (operations, chronology, contents, references, pending, sequence) = env
+            .create_databases_and_commit(transaction, |opener, writer| -> heed::Result<_> {
+                Ok(CommitOrAbort::<_, ()>::Commit((
+                    opener.create_database(writer, Some("operations"))?,
+                    opener.create_database(writer, Some("chronology"))?,
+                    opener.create_database(writer, Some("contents"))?,
+                    opener.create_database(writer, Some("references"))?,
+                    opener.create_database(writer, Some("pending"))?,
+                    opener.create_database(writer, Some("sequence"))?,
+                )))
+            })?
+            .unwrap_commit();
         let store = Self {
             path: canonical,
-            operations: env.create_database(&mut transaction, Some("operations"))?,
-            chronology: env.create_database(&mut transaction, Some("chronology"))?,
-            contents: env.create_database(&mut transaction, Some("contents"))?,
-            references: env.create_database(&mut transaction, Some("references"))?,
-            pending: env.create_database(&mut transaction, Some("pending"))?,
-            sequence: env.create_database(&mut transaction, Some("sequence"))?,
-            env: env.clone(),
+            operations,
+            chronology,
+            contents,
+            references,
+            pending,
+            sequence,
+            env,
         };
-        transaction.commit()?;
         let shared = Arc::new(store);
         registry.insert(shared.path.clone(), Arc::downgrade(&shared));
         drop(guard);

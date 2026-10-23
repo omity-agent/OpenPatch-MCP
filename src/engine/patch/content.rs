@@ -48,7 +48,7 @@ fn compute_replacements<'chunk>(
     original_lines: &[&str],
     chunks: &'chunk [UpdateChunk],
 ) -> ReplacementPlan<'chunk> {
-    let mut search_index = seek_sequence::LineSearchIndex::new(original_lines);
+    let search_index = seek_sequence::LineSearchIndex::new(original_lines);
     let mut forward_replacements = SmallVec::with_capacity(chunks.len());
     let mut reverse_replacements = SmallVec::with_capacity(chunks.len());
     let mut errors = Vec::new();
@@ -60,7 +60,7 @@ fn compute_replacements<'chunk>(
         };
         match matching::plan_chunk(
             original_lines,
-            &mut search_index,
+            &search_index,
             chunk,
             remaining_chunks,
             line_index,

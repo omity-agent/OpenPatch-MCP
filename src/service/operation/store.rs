@@ -23,10 +23,10 @@ type Counter = U64<BigEndian>;
 pub(super) struct HistoryStore {
     path: PathBuf,
     env: Env,
-    operations: Database<IdKey, SerdeRmp<Record>>,
-    chronology: Database<Counter, IdKey>,
-    contents: Database<Bytes, SerdeRmp<Blob>>,
-    references: Database<Bytes, Counter>,
-    pending: Database<U8, SerdeRmp<Journal>>,
-    sequence: Database<U8, Counter>,
+    operations: Database<'static, IdKey, SerdeRmp<Record>>,
+    chronology: Database<'static, Counter, IdKey>,
+    contents: Database<'static, Bytes, SerdeRmp<Blob>>,
+    references: Database<'static, Bytes, Counter>,
+    pending: Database<'static, U8, SerdeRmp<Journal>>,
+    sequence: Database<'static, U8, Counter>,
 }

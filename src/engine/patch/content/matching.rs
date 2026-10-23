@@ -7,7 +7,7 @@ pub(super) struct ChunkPlan<'chunk> {
 }
 pub(super) fn plan_chunk<'chunk>(
     original_lines: &[&str],
-    search_index: &mut LineSearchIndex<'_, '_>,
+    search_index: &LineSearchIndex<'_, '_>,
     chunk: &'chunk UpdateChunk,
     remaining_chunks: &'chunk [UpdateChunk],
     line_index: usize,
@@ -96,7 +96,7 @@ const fn reverse_plan(
 }
 fn seek_context(
     original_lines: &[&str],
-    search_index: &mut LineSearchIndex<'_, '_>,
+    search_index: &LineSearchIndex<'_, '_>,
     context: &String,
     line_index: usize,
 ) -> anyhow::Result<usize> {

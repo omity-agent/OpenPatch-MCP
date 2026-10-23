@@ -1,5 +1,42 @@
 use super::{id_from, ids_from, service};
+use core::fmt::Write as _;
 use std::fs;
+#[test]
+fn large_batches_keep_first_operation_order_and_undo_every_file() {
+    let directory = tempfile::tempdir().unwrap();
+    let service = service(&directory);
+    let paths = (0_u16..128)
+        .map(|index| directory.path().join(format!("{index}.txt")))
+        .collect::<Vec<_>>();
+    let mut patch = String::from("*** Begin Patch\n");
+    for path in &paths {
+        writeln!(patch, "*** Add File: {}\n+first", path.display()).unwrap();
+    }
+    for path in paths.iter().rev() {
+        writeln!(
+            patch,
+            "*** Update File: {}\n@@\n-first\n+final",
+            path.display()
+        )
+        .unwrap();
+    }
+    patch.push_str("*** End Patch");
+    let applied = service.apply(&patch);
+    assert!(applied.succeeded(), "{}", applied.render());
+    let structured = applied.structured();
+    for (index, path) in paths.iter().enumerate() {
+        assert_eq!(
+            structured["successes"][index]["path"],
+            path.display().to_string()
+        );
+        assert_eq!(fs::read_to_string(path).unwrap(), "final\n");
+    }
+    let ids = ids_from(&applied.render());
+    assert_eq!(ids.len(), paths.len());
+    let undone = service.undo(&ids);
+    assert!(undone.succeeded(), "{}", undone.render());
+    assert!(paths.iter().all(|path| !path.exists()));
+}
 fn two_ids(output: &str) -> [String; 2] {
     let mut ids = ids_from(output).into_iter();
     let Some(first) = ids.next() else {

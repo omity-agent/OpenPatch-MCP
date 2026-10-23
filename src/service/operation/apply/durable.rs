@@ -4,7 +4,8 @@ use crate::operation::{
     store::{HistoryStore, Transition},
 };
 use anyhow::Context as _;
-use rustc_hash::FxHashMap;
+use indexmap::{IndexMap, map::Entry};
+use rustc_hash::FxBuildHasher;
 pub(super) fn commit(
     history: &HistoryStore,
     planned: &[PlannedMutation],
@@ -48,34 +49,39 @@ pub(crate) fn resume(history: &HistoryStore) -> anyhow::Result<()> {
     Ok(())
 }
 pub(super) fn collapse(planned: &[PlannedMutation]) -> anyhow::Result<Vec<Transition>> {
-    let mut indices: FxHashMap<std::path::PathBuf, usize> = FxHashMap::default();
-    let mut transitions: Vec<Transition> = Vec::new();
-    for entry in planned {
+    let mut transitions: IndexMap<&std::path::Path, Transition, FxBuildHasher> =
+        IndexMap::default();
+    for planned_mutation in planned {
         anyhow::ensure!(
-            entry.observed.len() == entry.mutation.changes.len(),
+            planned_mutation.observed.len() == planned_mutation.mutation.changes.len(),
             "file operation state count does not match its path count"
         );
-        for (change, observed) in entry.mutation.changes.iter().zip(&entry.observed) {
-            if let Some(index) = indices.get(&change.path).copied() {
-                let transition = transitions
-                    .get_mut(index)
-                    .context("invalid final file state index")?;
-                anyhow::ensure!(
-                    transition.after == *observed,
-                    "discontinuous file operation plan: {}",
-                    change.path.display()
-                );
-                transition.after = change.after.clone();
-            } else {
-                indices.insert(change.path.clone(), transitions.len());
-                transitions.push(Transition {
-                    path: change.path.clone(),
-                    before: observed.clone(),
-                    after: change.after.clone(),
-                });
+        for (change, observed) in planned_mutation
+            .mutation
+            .changes
+            .iter()
+            .zip(&planned_mutation.observed)
+        {
+            match transitions.entry(change.path.as_path()) {
+                Entry::Occupied(mut entry) => {
+                    let transition = entry.get_mut();
+                    anyhow::ensure!(
+                        transition.after == *observed,
+                        "discontinuous file operation plan: {}",
+                        change.path.display()
+                    );
+                    transition.after = change.after.clone();
+                }
+                Entry::Vacant(entry) => {
+                    entry.insert(Transition {
+                        path: change.path.clone(),
+                        before: observed.clone(),
+                        after: change.after.clone(),
+                    });
+                }
             }
         }
     }
-    transitions.sort_by_key(|transition| transition.after.contents().is_none());
-    Ok(transitions)
+    transitions.sort_by_key(|_, transition| transition.after.contents().is_none());
+    Ok(transitions.into_values().collect())
 }

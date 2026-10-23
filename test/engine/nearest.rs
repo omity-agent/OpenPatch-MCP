@@ -1,4 +1,4 @@
-use super::{alignment::Alignment, alignment::fit, find};
+use super::{SearchIndex, alignment::Alignment, alignment::fit};
 use crate::seek_sequence::SequenceMatch;
 fn chars(value: &str) -> Vec<char> {
     value.chars().collect()
@@ -52,7 +52,7 @@ fn character_boundaries_map_back_to_the_enclosing_original_lines() {
     ];
     let pattern = [String::from("abcYdef")];
     assert_eq!(
-        find(&lines, &pattern),
+        SearchIndex::new(&lines).find(&pattern),
         Some(SequenceMatch {
             start: 2,
             length: 1,

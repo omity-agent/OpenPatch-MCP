@@ -3,7 +3,8 @@ use super::{
     files,
 };
 use crate::parser::FileHunk;
-use rustc_hash::FxHashMap;
+use indexmap::IndexMap;
+use rustc_hash::FxBuildHasher;
 use std::path::{Path, PathBuf};
 pub(super) struct PlannedMutation {
     pub(super) mutation: Mutation,
@@ -21,14 +22,12 @@ pub(super) struct BatchPlan {
 }
 #[derive(Default)]
 pub(super) struct Workspace {
-    pub(super) files: Vec<VirtualFile>,
-    pub(super) indices: FxHashMap<PathBuf, usize>,
+    pub(super) files: IndexMap<PathBuf, VirtualFile, FxBuildHasher>,
     pub(super) mutation_count: usize,
     pub(super) completed: Vec<PlannedMutation>,
     moving: Option<bool>,
 }
 pub(super) struct VirtualFile {
-    pub(super) path: PathBuf,
     pub(super) observed: FileState,
     pub(super) current: FileState,
     pub(super) origin: Option<PathBuf>,
@@ -100,25 +99,21 @@ pub(super) fn plan(hunks: Vec<FileHunk>) -> BatchPlan {
 }
 impl Workspace {
     fn snapshot(&mut self, path: &Path, action: &str) -> anyhow::Result<FileState> {
-        if let Some(index) = self.indices.get(path).copied() {
-            return self
-                .files
-                .get(index)
-                .map(|file| file.current.clone())
-                .ok_or_else(|| anyhow::anyhow!("virtual file index is out of bounds"));
+        if let Some(file) = self.files.get(path) {
+            return Ok(file.current.clone());
         }
         let observed = files::snapshot(path, action)?;
-        let index = self.files.len();
         let origin = matches!(observed, FileState::Present(_)).then(|| path.to_owned());
-        self.files.push(VirtualFile {
-            path: path.to_owned(),
-            observed: observed.clone(),
-            current: observed.clone(),
-            origin,
-            logical_before: None,
-            first_order: 0,
-        });
-        self.indices.insert(path.to_owned(), index);
+        self.files.insert(
+            path.to_owned(),
+            VirtualFile {
+                observed: observed.clone(),
+                current: observed.clone(),
+                origin,
+                logical_before: None,
+                first_order: 0,
+            },
+        );
         Ok(observed)
     }
     fn record(&mut self, mutation: Mutation) -> anyhow::Result<()> {
@@ -135,15 +130,10 @@ impl Workspace {
         let moved = if mutation.changes.len() == 2 {
             let source = mutation.change(PathRole::Source)?;
             let destination = mutation.change(PathRole::Destination)?;
-            let source_index = self
-                .indices
-                .get(&source.path)
-                .copied()
-                .ok_or_else(|| anyhow::anyhow!("move source has no virtual file state"))?;
             let origin = self
                 .files
-                .get(source_index)
-                .ok_or_else(|| anyhow::anyhow!("virtual file index is out of bounds"))?
+                .get(&source.path)
+                .ok_or_else(|| anyhow::anyhow!("move source has no virtual file state"))?
                 .origin
                 .clone();
             Some((source.path.clone(), destination.path.clone(), origin))
@@ -151,15 +141,7 @@ impl Workspace {
             None
         };
         for change in mutation.changes {
-            let index = self
-                .indices
-                .get(&change.path)
-                .copied()
-                .ok_or_else(|| anyhow::anyhow!("planned path has no virtual file state"))?;
-            let file = self
-                .files
-                .get_mut(index)
-                .ok_or_else(|| anyhow::anyhow!("virtual file index is out of bounds"))?;
+            let file = self.file_mut(&change.path)?;
             if file.logical_before.is_none() {
                 file.logical_before = Some(change.before);
                 file.first_order = order;
@@ -176,13 +158,8 @@ impl Workspace {
         Ok(())
     }
     fn file_mut(&mut self, path: &Path) -> anyhow::Result<&mut VirtualFile> {
-        let index = self
-            .indices
-            .get(path)
-            .copied()
-            .ok_or_else(|| anyhow::anyhow!("planned path has no virtual file state"))?;
         self.files
-            .get_mut(index)
-            .ok_or_else(|| anyhow::anyhow!("virtual file index is out of bounds"))
+            .get_mut(path)
+            .ok_or_else(|| anyhow::anyhow!("planned path has no virtual file state"))
     }
 }

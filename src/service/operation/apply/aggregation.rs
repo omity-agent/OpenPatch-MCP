@@ -16,8 +16,8 @@ impl Workspace {
     pub(super) fn flush(&mut self) {
         let mut claimed = FxHashSet::default();
         let mut ordered = self.moves(&mut claimed);
-        for file in &self.files {
-            if claimed.contains(&file.path) {
+        for (path, file) in &self.files {
+            if claimed.contains(path) {
                 continue;
             }
             let Some(before) = effective_before(file).cloned() else {
@@ -30,7 +30,7 @@ impl Workspace {
                 planned: PlannedMutation {
                     mutation: Mutation::single(
                         transition_kind(&before, &file.current),
-                        file.path.clone(),
+                        path.clone(),
                         before,
                         file.current.clone(),
                     ),
@@ -42,25 +42,25 @@ impl Workspace {
         ordered.sort_by_key(|entry| entry.order);
         self.completed
             .extend(ordered.into_iter().map(|entry| entry.planned));
-        for file in &mut self.files {
+        for (path, file) in &mut self.files {
             file.observed = file.current.clone();
-            file.origin = matches!(file.current, FileState::Present(_)).then(|| file.path.clone());
+            file.origin = matches!(file.current, FileState::Present(_)).then(|| path.clone());
             file.logical_before = None;
         }
     }
     fn moves(&self, claimed: &mut FxHashSet<std::path::PathBuf>) -> Vec<OrderedMutation> {
         let mut ordered = Vec::new();
-        for destination in &self.files {
+        for (destination_path, destination) in &self.files {
             let Some(origin_path) = destination.origin.as_ref() else {
                 continue;
             };
-            if origin_path == &destination.path
+            if origin_path == destination_path
                 || claimed.contains(origin_path)
-                || claimed.contains(&destination.path)
+                || claimed.contains(destination_path)
             {
                 continue;
             }
-            let Some(source) = self.file(origin_path) else {
+            let Some(source) = self.files.get(origin_path) else {
                 continue;
             };
             let Some(source_before) = effective_before(source) else {
@@ -79,8 +79,8 @@ impl Workspace {
             ordered.push(OrderedMutation {
                 planned: PlannedMutation {
                     mutation: Mutation::moved(
-                        source.path.clone(),
-                        destination.path.clone(),
+                        origin_path.clone(),
+                        destination_path.clone(),
                         source_before.clone(),
                         destination_before.clone(),
                     ),
@@ -88,14 +88,10 @@ impl Workspace {
                 },
                 order: source.first_order.min(destination.first_order),
             });
-            claimed.insert(source.path.clone());
-            claimed.insert(destination.path.clone());
+            claimed.insert(origin_path.clone());
+            claimed.insert(destination_path.clone());
         }
         ordered
-    }
-    fn file(&self, path: &std::path::Path) -> Option<&VirtualFile> {
-        let index = self.indices.get(path)?;
-        self.files.get(*index)
     }
 }
 fn effective_before(file: &VirtualFile) -> Option<&FileState> {

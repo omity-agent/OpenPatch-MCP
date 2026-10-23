@@ -1,6 +1,6 @@
 use openpatch::service::{cli::Cli, server::Application};
 #[global_allocator]
-static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+static ALLOC: snmalloc_rs::SnMalloc = snmalloc_rs::SnMalloc;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = <Cli as clap::Parser>::parse();

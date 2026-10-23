@@ -1,4 +1,12 @@
-cargo-features = ["trim-paths", "panic-immediate-abort"]
+cargo-features = [
+    "different-binary-name",
+    "metabuild",
+    "multiple-build-scripts",
+    "open-namespaces",
+    "panic-immediate-abort",
+    "path-bases",
+    "unstable-editions",
+]
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }
@@ -13,12 +21,15 @@ arithmetic_side_effects = "allow"
 big_endian_bytes = "allow"
 blanket_clippy_restriction_lints = "allow"
 cargo_common_metadata = "allow"
+cast_precision_loss = "allow"
+create_dir = "allow"
 else_if_without_else = "allow"
 exhaustive_structs = "allow"
 field_scoped_visibility_modifiers = "allow"
 float_arithmetic = "allow"
 implicit_return = "allow"
 inline_modules = "allow"
+integer_division_remainder_used = "allow"
 min_ident_chars = "allow"
 missing_docs_in_private_items = "allow"
 missing_errors_doc = "allow"
@@ -26,6 +37,7 @@ missing_panics_doc = "allow"
 missing_trait_methods = "allow"
 module_name_repetitions = "allow"
 multiple_crate_versions = "allow"
+must_use_without_reason = "allow"
 non_ascii_literal = "allow"
 panic = "allow"
 print_stderr = "allow"
@@ -38,11 +50,13 @@ semicolon_outside_block = "allow"
 separated_literal_suffix = "allow"
 similar_names = "allow"
 single_call_fn = "allow"
+tests_outside_test_module = "allow"
 too_many_arguments = "allow"
 too_many_lines = "allow"
 undocumented_unsafe_blocks = "allow"
 unneeded_field_pattern = "allow"
 unwrap_used = "allow"
+use_debug = "allow"
 wildcard_dependencies = "allow"
 
 [lints.rust]
@@ -55,22 +69,9 @@ rust_2024_compatibility = { level = "warn", priority = -1 }
 
 missing_docs = "allow"
 
-[profile.dev]
-opt-level = 0
-debug = true
-strip = "none"
-debug-assertions = true
-overflow-checks = true
-lto = false
-panic = 'unwind'
-incremental = true
-codegen-units = 256
-rpath = false
-trim-paths = "all"
-
 [profile.release]
 opt-level = 3
-debug = false
+debug = "none"
 strip = "symbols"
 debug-assertions = false
 overflow-checks = false
@@ -80,6 +81,7 @@ incremental = false
 codegen-units = 1
 rpath = false
 trim-paths = "all"
+codegen-backend = "llvm"
 
 [package]
 name = "openpatch"
@@ -87,14 +89,21 @@ version = "0.0.0"
 edition = "2024"
 
 [dependencies]
-anyhow = "*"
+anyhow = { version = "*", public = true }
 atomic-write-file = "*"
 blake3 = "*"
 bytecount = "*"
-clap = { version = "*", features = ["derive"] }
+clap = { git = "https://github.com/clap-rs/clap", features = [
+    "derive",
+    "deprecated",
+    "string",
+    "wrap_help",
+] }
 diffy = "*"
 directories = "*"
+enum-map = "*"
 heed = { version = "*", default-features = false, features = ["serde-rmp"] }
+indexmap = "*"
 itoa = "*"
 lz4_flex = { version = "*", default-features = false, features = [
     "checked-decode",
@@ -103,28 +112,27 @@ lz4_flex = { version = "*", default-features = false, features = [
     "std",
 ] }
 memchr = "*"
-mimalloc = { version = "*", features = ["v3"] }
 radix_fmt = "*"
 rand = "*"
-rmcp = { version = "*", features = [
+rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", features = [
     "client",
     "server",
     "macros",
     "transport-io",
-] }
+], public = true }
 rustc-hash = "*"
 schemars = "*"
 serde = { version = "*", features = ["derive", "unstable"] }
 serde_bytes = "*"
 shellexpand = "*"
-smallvec = "*"
-sonic-rs = "*"
-thiserror = "*"
-tokio = { version = "*", features = [
-    "io-std",
-    "macros",
-    "rt-multi-thread",
+smallvec = { version = "*", public = true }
+snmalloc-rs = { git = "https://github.com/microsoft/snmalloc", features = [
+    "native-cpu",
+    "lto",
 ] }
+sonic-rs = { git = "https://github.com/cloudwego/sonic-rs" }
+thiserror = { git = "https://github.com/dtolnay/thiserror" }
+tokio = { version = "*", features = ["io-std", "macros", "rt-multi-thread"] }
 unicode-normalization = "*"
 
 [dev-dependencies]

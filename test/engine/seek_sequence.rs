@@ -83,7 +83,7 @@ fn exact_search_does_not_accept_a_trimmed_match() {
 fn rare_middle_line_can_anchor_the_match() {
     let source = ["same", "same", "same", "unique", "same", "same"];
     let pattern = pattern(&["same", "unique", "same"]);
-    let mut index = LineSearchIndex::new(&source);
+    let index = LineSearchIndex::new(&source);
     assert_eq!(
         index.seek(&pattern, 0, false),
         Some(SequenceMatch {
