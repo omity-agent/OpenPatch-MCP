@@ -29,6 +29,7 @@ pub struct ReplaceRequest {
     pub new_string: String,
 }
 #[derive(Debug, Deserialize, schemars :: JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct UndoPatchRequest {
     # [schemars (length (min = 1) , inner (regex (pattern = crate :: operation :: model :: ID_PATTERN)))]
     pub ids: Vec<String>,

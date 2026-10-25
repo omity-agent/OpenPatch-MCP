@@ -96,24 +96,26 @@ fn verify_schemas(application: &Application, expected_properties: &[&str]) {
         );
     }
     let undo = tools.iter().find(|tool| tool.name == "undo_patch").unwrap();
-    let undo_properties = undo
-        .input_schema
-        .get("properties")
-        .unwrap()
+    assert_eq!(
+        undo.input_schema.as_ref(),
+        rmcp::serde_json::json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string",
+                        "pattern": crate::operation::model::ID_PATTERN
+                    }
+                }
+            },
+            "required": ["ids"],
+            "additionalProperties": false
+        })
         .as_object()
-        .unwrap();
-    assert_eq!(
-        undo_properties
-            .keys()
-            .map(String::as_str)
-            .collect::<Vec<_>>(),
-        ["ids"]
-    );
-    let ids = undo_properties.get("ids").unwrap();
-    assert_eq!(ids.get("minItems").unwrap().as_u64(), Some(1));
-    assert_eq!(
-        ids.pointer("/items/pattern").unwrap().as_str(),
-        Some(crate::operation::model::ID_PATTERN)
+        .unwrap()
     );
     let apply = tools
         .iter()
