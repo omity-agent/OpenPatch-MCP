@@ -1,4 +1,4 @@
-use super::{id_from, ids_from, service};
+use super::{apply, assert_contents, id_from, ids_from, service, target, undo};
 use core::fmt::Write as _;
 use std::fs;
 #[test]
@@ -37,70 +37,36 @@ fn large_batches_keep_first_operation_order_and_undo_every_file() {
     assert!(undone.succeeded(), "{}", undone.render());
     assert!(paths.iter().all(|path| !path.exists()));
 }
-fn two_ids(output: &str) -> [String; 2] {
-    let mut ids = ids_from(output).into_iter();
-    let Some(first) = ids.next() else {
-        panic!("expected first operation ID");
-    };
-    let Some(second) = ids.next() else {
-        panic!("expected second operation ID");
-    };
-    assert!(ids.next().is_none());
-    [first, second]
-}
 #[test]
-fn already_applied_update_can_be_undone_to_patch_before_contents() {
-    let directory = tempfile::tempdir().unwrap();
-    let target = directory.path().join("target.txt");
-    fs::write(&target, "new\n").unwrap();
-    let service = service(&directory);
-    let patch = format!(
-        "*** Begin Patch\n*** Update File: {}\n@@\n-old from patch\n+new\n*** End Patch",
-        target.display()
-    );
-    let applied = service.apply(&patch);
-    assert!(applied.succeeded(), "{}", applied.render());
-    assert_eq!(fs::read_to_string(&target).unwrap(), "new\n");
-    let undone = service.undo(&[id_from(&applied.render())]);
-    assert!(undone.succeeded(), "{}", undone.render());
-    assert_eq!(fs::read_to_string(target).unwrap(), "old from patch\n");
-}
-#[test]
-fn already_applied_add_can_be_undone_to_a_missing_file() {
-    let directory = tempfile::tempdir().unwrap();
-    let target = directory.path().join("target.txt");
-    fs::write(&target, "added\n").unwrap();
-    let service = service(&directory);
-    let patch = format!(
-        "*** Begin Patch\n*** Add File: {}\n+added\n*** End Patch",
-        target.display()
-    );
-    let applied = service.apply(&patch);
-    assert!(applied.succeeded(), "{}", applied.render());
-    assert_eq!(fs::read_to_string(&target).unwrap(), "added\n");
-    let undone = service.undo(&[id_from(&applied.render())]);
-    assert!(undone.succeeded(), "{}", undone.render());
-    assert!(!target.exists());
-    assert!(undone.render().contains("<DELETE>"));
-}
-#[test]
-fn multiple_hunks_on_one_file_share_one_undo_history_entry() {
-    let directory = tempfile::tempdir().unwrap();
-    let target = directory.path().join("target.txt");
-    fs::write(&target, "one\n").unwrap();
-    let service = service(&directory);
-    let patch = format!(
-        "*** Begin Patch\n*** Update File: {}\n@@\n-one\n+two\n*** Update File: {}\n@@\n-two\n+three\n*** End Patch",
-        target.display(),
-        target.display()
-    );
-    let applied = service.apply(&patch);
-    assert!(applied.succeeded(), "{}", applied.render());
-    assert_eq!(fs::read_to_string(&target).unwrap(), "three\n");
-    assert_eq!(ids_from(&applied.render()).len(), 1);
-    let undone = service.undo(&[id_from(&applied.render())]);
-    assert!(undone.succeeded(), "{}", undone.render());
-    assert_eq!(fs::read_to_string(target).unwrap(), "one\n");
+fn idempotent_and_repeated_updates_keep_one_undoable_operation() {
+    for (original, expected, restored, body) in [
+        (
+            "new\n",
+            "new\n",
+            Some("old from patch\n"),
+            "*** Update File: {path}\n@@\n-old from patch\n+new",
+        ),
+        ("added\n", "added\n", None, "*** Add File: {path}\n+added"),
+        (
+            "one\n",
+            "three\n",
+            Some("one\n"),
+            "*** Update File: {path}\n@@\n-one\n+two\n*** Update File: {path}\n@@\n-two\n+three",
+        ),
+    ] {
+        let (_directory, service, target) = target(original);
+        let applied = apply(
+            &service,
+            &body.replace("{path}", &target.display().to_string()),
+        );
+        assert_eq!(ids_from(&applied).len(), 1);
+        assert_contents(&target, Some(expected));
+        let undone = undo(&service, &id_from(&applied));
+        assert_contents(&target, restored);
+        if restored.is_none() {
+            assert!(undone.render().contains("<DELETE>"));
+        }
+    }
 }
 #[test]
 fn failed_hunk_does_not_discard_other_hunks() {
@@ -119,7 +85,7 @@ fn failed_hunk_does_not_discard_other_hunks() {
     assert!(!applied.succeeded());
     assert_eq!(fs::read_to_string(&first).unwrap(), "first\n");
     assert_eq!(fs::read_to_string(&second).unwrap(), "second\n");
-    let [first_id, second_id] = two_ids(&applied.render());
+    let [first_id, second_id]: [String; 2] = ids_from(&applied.render()).try_into().unwrap();
     let undone = service.undo(&[first_id, second_id]);
     assert!(undone.succeeded(), "{}", undone.render());
     assert!(!first.exists());

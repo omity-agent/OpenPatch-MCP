@@ -1,4 +1,4 @@
-use crate::seek_sequence::{SequenceMatch, normalize::collapse_spaces};
+use crate::seek_sequence::{SequenceMatch, rules::RuleChain};
 pub(super) struct NormalizedCorpus {
     chars: Vec<char>,
     line_starts: Vec<(usize, usize)>,
@@ -8,10 +8,9 @@ impl NormalizedCorpus {
         let mut chars = Vec::new();
         let mut line_starts = Vec::new();
         for (line_index, line) in lines.iter().enumerate() {
-            let normalized = collapse_spaces(line);
-            if normalized.is_empty() {
+            let Some(normalized) = RuleChain::complete().key(line) else {
                 continue;
-            }
+            };
             if !chars.is_empty() {
                 chars.push('\n');
             }

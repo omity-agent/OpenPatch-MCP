@@ -1,15 +1,17 @@
-use alloc::borrow::Cow;
 use core::cell::OnceCell;
-use enum_map::{Enum, EnumMap};
+mod index;
 mod nearest;
-mod normalize;
-mod tier;
-use normalize::normalize;
-use tier::SearchTier;
+mod rules;
+use index::SequenceIndex;
+use rules::RuleChain;
 pub(crate) struct LineSearchIndex<'slice, 'text> {
     lines: &'slice [&'text str],
-    tiers: EnumMap<MatchMode, OnceCell<SearchTier<'text>>>,
+    indexes: Vec<RuleIndex<'text>>,
     nearest: OnceCell<nearest::SearchIndex>,
+}
+struct RuleIndex<'text> {
+    chain: RuleChain,
+    cache: OnceCell<SequenceIndex<'text>>,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SequenceMatch {
@@ -21,7 +23,12 @@ impl<'slice, 'text> LineSearchIndex<'slice, 'text> {
     pub(crate) fn new(lines: &'slice [&'text str]) -> Self {
         Self {
             lines,
-            tiers: EnumMap::default(),
+            indexes: RuleChain::prefixes()
+                .map(|chain| RuleIndex {
+                    chain,
+                    cache: OnceCell::new(),
+                })
+                .collect(),
             nearest: OnceCell::new(),
         }
     }
@@ -32,9 +39,9 @@ impl<'slice, 'text> LineSearchIndex<'slice, 'text> {
         start: usize,
         eof: bool,
     ) -> Option<SequenceMatch> {
-        self.tiers
+        self.indexes
             .iter()
-            .find_map(|(mode, _)| self.find(pattern, start, eof, mode))
+            .find_map(|index| index.find(self.lines, pattern, start, eof))
     }
     #[must_use]
     pub(crate) fn seek_exact(
@@ -43,7 +50,7 @@ impl<'slice, 'text> LineSearchIndex<'slice, 'text> {
         start: usize,
         eof: bool,
     ) -> Option<SequenceMatch> {
-        self.find(pattern, start, eof, MatchMode::Exact)
+        self.indexes.first()?.find(self.lines, pattern, start, eof)
     }
     #[must_use]
     pub(crate) fn closest(&self, pattern: &[String]) -> Option<SequenceMatch> {
@@ -51,39 +58,21 @@ impl<'slice, 'text> LineSearchIndex<'slice, 'text> {
             .get_or_init(|| nearest::SearchIndex::new(self.lines))
             .find(pattern)
     }
+}
+impl<'text> RuleIndex<'text> {
     fn find(
         &self,
+        lines: &[&'text str],
         pattern: &[String],
         start: usize,
         eof: bool,
-        mode: MatchMode,
     ) -> Option<SequenceMatch> {
         if pattern.is_empty() {
             return Some(SequenceMatch { start, length: 0 });
         }
-        let tier = self.tiers[mode].get_or_init(|| SearchTier::new(self.lines, mode));
-        tier.find(pattern, start, eof)
-    }
-}
-#[derive(Clone, Copy, Enum)]
-pub(super) enum MatchMode {
-    Exact,
-    Trim,
-    Normalized,
-    IgnoreEmptyLines,
-    CollapseSpaces,
-}
-impl MatchMode {
-    pub(super) fn key(self, source: &str) -> Cow<'_, str> {
-        match self {
-            Self::Exact => Cow::Borrowed(source),
-            Self::Trim => Cow::Borrowed(source.trim()),
-            Self::Normalized | Self::IgnoreEmptyLines => normalize(source),
-            Self::CollapseSpaces => normalize::collapse_spaces(source),
-        }
-    }
-    pub(super) const fn skips_empty_lines(self) -> bool {
-        matches!(self, Self::IgnoreEmptyLines | Self::CollapseSpaces)
+        self.cache
+            .get_or_init(|| SequenceIndex::new(lines, self.chain))
+            .find(pattern, start, eof)
     }
 }
 #[cfg(test)]

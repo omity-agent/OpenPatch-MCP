@@ -28,6 +28,7 @@ exhaustive_structs = "allow"
 field_scoped_visibility_modifiers = "allow"
 float_arithmetic = "allow"
 implicit_return = "allow"
+indexing_slicing = "allow"
 inline_modules = "allow"
 integer_division_remainder_used = "allow"
 min_ident_chars = "allow"
@@ -101,8 +102,8 @@ clap = { git = "https://github.com/clap-rs/clap", features = [
 ] }
 diffy = "*"
 directories = "*"
-enum-map = "*"
 heed = { version = "*", default-features = false, features = ["serde-rmp"] }
+icu_properties = { git = "https://github.com/unicode-org/icu4x" }
 indexmap = "*"
 itoa = "*"
 lz4_flex = { version = "*", default-features = false, features = [
@@ -134,6 +135,7 @@ sonic-rs = { git = "https://github.com/cloudwego/sonic-rs" }
 thiserror = { git = "https://github.com/dtolnay/thiserror" }
 tokio = { version = "*", features = ["io-std", "macros", "rt-multi-thread"] }
 unicode-normalization = "*"
+unicode-security = { git = "https://github.com/unicode-rs/unicode-security" }
 
 [dev-dependencies]
 tempfile = "*"

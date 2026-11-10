@@ -1,5 +1,8 @@
-use super::{OperationService, model::OperationId};
-use std::fs;
+use super::{OperationService, model::OperationId, result::OperationOutput};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 #[path = "operation/applying.rs"]
 mod applying;
 #[path = "operation/coalescing.rs"]
@@ -10,6 +13,8 @@ mod line_endings;
 mod relocation;
 #[path = "operation/replacement.rs"]
 mod replacement;
+#[path = "operation/rules.rs"]
+mod rules;
 #[path = "operation/validation.rs"]
 mod validation;
 fn id_from(output: &str) -> String {
@@ -25,57 +30,54 @@ fn ids_from(output: &str) -> Vec<String> {
         .map(|part| part.split_once("\n</ID>").unwrap().0.to_owned())
         .collect()
 }
-fn apply(service: &OperationService, lines: &[String]) -> String {
-    let output = service.apply(&lines.join("\n"));
+fn apply(service: &OperationService, body: &str) -> String {
+    let output = service.apply(&format!("*** Begin Patch\n{body}\n*** End Patch"));
     assert!(output.succeeded(), "{}", output.render());
     output.render()
+}
+fn undo(service: &OperationService, id: &str) -> OperationOutput {
+    let output = service.undo(&[id.to_owned()]);
+    assert!(output.succeeded(), "{}", output.render());
+    output
 }
 fn service(directory: &tempfile::TempDir) -> OperationService {
     OperationService::open(&directory.path().join("history.lmdb")).unwrap()
 }
-#[test]
-fn edit_undo_preserves_unrelated_changes_and_can_be_undone() {
+fn target(contents: &str) -> (tempfile::TempDir, OperationService, PathBuf) {
     let directory = tempfile::tempdir().unwrap();
     let service = service(&directory);
-    let target = directory.path().join("target.txt");
-    fs::write(&target, "old\nkeep\n").unwrap();
+    let path = directory.path().join("target.txt");
+    fs::write(&path, contents).unwrap();
+    (directory, service, path)
+}
+fn assert_contents(path: &Path, expected: Option<&str>) {
+    match expected {
+        Some(contents) => assert_eq!(fs::read_to_string(path).unwrap(), contents),
+        None => assert!(!path.exists()),
+    }
+}
+#[test]
+fn edit_undo_preserves_unrelated_changes_and_can_be_undone() {
+    let (_directory, service, target) = target("old\nkeep\n");
     let applied = apply(
         &service,
-        &[
-            String::from("*** Begin Patch"),
-            format!("*** Update File: {}", target.display()),
-            String::from("@@"),
-            String::from("-old"),
-            String::from("+new"),
-            String::from("*** End Patch"),
-        ],
+        &format!("*** Update File: {}\n@@\n-old\n+new", target.display()),
     );
     fs::write(&target, "new\nkeep changed\n").unwrap();
     let first_id = id_from(&applied);
-    let undone = service.undo(core::slice::from_ref(&first_id));
-    assert!(undone.succeeded(), "{}", undone.render());
+    let undone = undo(&service, &first_id);
     assert_eq!(fs::read_to_string(&target).unwrap(), "old\nkeep changed\n");
-    let redone = service.undo(&[id_from(&undone.render())]);
-    assert!(redone.succeeded(), "{}", redone.render());
+    undo(&service, &id_from(&undone.render()));
     assert_eq!(fs::read_to_string(target).unwrap(), "new\nkeep changed\n");
 }
 #[test]
 fn undo_add_restores_overwritten_file() {
-    let directory = tempfile::tempdir().unwrap();
-    let service = service(&directory);
-    let target = directory.path().join("target.txt");
-    fs::write(&target, "original\n").unwrap();
+    let (_directory, service, target) = target("original\n");
     let applied = apply(
         &service,
-        &[
-            String::from("*** Begin Patch"),
-            format!("*** Add File: {}", target.display()),
-            String::from("+replacement"),
-            String::from("*** End Patch"),
-        ],
+        &format!("*** Add File: {}\n+replacement", target.display()),
     );
-    let undone = service.undo(&[id_from(&applied)]);
-    assert!(undone.succeeded(), "{}", undone.render());
+    let undone = undo(&service, &id_from(&applied));
     assert_eq!(fs::read_to_string(target).unwrap(), "original\n");
     assert!(undone.render().contains("<EDIT>"));
 }
@@ -89,22 +91,19 @@ fn undo_move_restores_source_and_overwritten_destination() {
     fs::write(&destination, "displaced\n").unwrap();
     let applied = apply(
         &service,
-        &[
-            String::from("*** Begin Patch"),
-            format!("*** Update File: {}", source.display()),
-            format!("*** Move to: {}", destination.display()),
-            String::from("*** End Patch"),
-        ],
+        &format!(
+            "*** Update File: {}\n*** Move to: {}",
+            source.display(),
+            destination.display()
+        ),
     );
     assert!(applied.contains("<MOVE>"));
     fs::write(&destination, "source\nextra\n").unwrap();
-    let undone = service.undo(&[id_from(&applied)]);
-    assert!(undone.succeeded(), "{}", undone.render());
+    let undone = undo(&service, &id_from(&applied));
     assert!(undone.render().contains("<MOVE>"));
     assert_eq!(fs::read_to_string(source).unwrap(), "source\nextra\n");
     assert_eq!(fs::read_to_string(&destination).unwrap(), "displaced\n");
-    let redone = service.undo(&[id_from(&undone.render())]);
-    assert!(redone.succeeded(), "{}", redone.render());
+    let redone = undo(&service, &id_from(&undone.render()));
     assert!(redone.render().contains("<MOVE>"));
     assert!(!directory.path().join("source.txt").exists());
     assert_eq!(fs::read_to_string(destination).unwrap(), "source\nextra\n");
@@ -118,15 +117,9 @@ fn separate_service_instances_share_transactional_history() {
     let target = directory.path().join("shared.txt");
     let applied = apply(
         &writer,
-        &[
-            String::from("*** Begin Patch"),
-            format!("*** Add File: {}", target.display()),
-            String::from("+shared"),
-            String::from("*** End Patch"),
-        ],
+        &format!("*** Add File: {}\n+shared", target.display()),
     );
-    let undone = reader.undo(&[id_from(&applied)]);
-    assert!(undone.succeeded(), "{}", undone.render());
+    undo(&reader, &id_from(&applied));
     assert!(!target.exists());
 }
 #[test]
@@ -137,26 +130,13 @@ fn batch_undo_keeps_successes_beside_invalid_id_failure() {
     let second = directory.path().join("second.txt");
     let applied = apply(
         &service,
-        &[
-            String::from("*** Begin Patch"),
-            format!("*** Add File: {}", first.display()),
-            String::from("+first"),
-            format!("*** Add File: {}", second.display()),
-            String::from("+second"),
-            String::from("*** End Patch"),
-        ],
+        &format!(
+            "*** Add File: {}\n+first\n*** Add File: {}\n+second",
+            first.display(),
+            second.display()
+        ),
     );
-    let mut id_iterator = applied
-        .split("<ID>\n")
-        .skip(1)
-        .map(|part| part.split_once("\n</ID>").unwrap().0.to_owned());
-    let Some(first_id) = id_iterator.next() else {
-        panic!("expected first operation ID");
-    };
-    let Some(second_id) = id_iterator.next() else {
-        panic!("expected second operation ID");
-    };
-    assert!(id_iterator.next().is_none());
+    let [first_id, second_id]: [String; 2] = ids_from(&applied).try_into().unwrap();
     let result = service.undo(&[first_id, String::from("not-an-id"), second_id]);
     assert!(!result.succeeded());
     assert!(result.render().contains("<SUCCEEDED>"));

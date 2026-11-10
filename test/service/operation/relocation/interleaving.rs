@@ -69,14 +69,7 @@ fn move_then_edit_keeps_the_edit_at_the_destination() {
     let destination = directory.path().join("destination.txt");
     fs::write(&source, "old\n").unwrap();
     let applied = service.apply(&format!(
-        "*** Begin Patch
-*** Update File: {}
-*** Move to: {}
-*** Update File: {}
-@@
--old
-+updated
-*** End Patch",
+        "*** Begin Patch\n*** Update File: {}\n*** Move to: {}\n*** Update File: {}\n@@\n-old\n+updated\n*** End Patch",
         source.display(),
         destination.display(),
         destination.display()
@@ -106,15 +99,7 @@ fn an_edit_between_moves_blocks_move_chain_coalescing() {
     let destination = directory.path().join("destination.txt");
     fs::write(&source, "old\n").unwrap();
     let applied = service.apply(&format!(
-        "*** Begin Patch
-*** Update File: {}
-*** Move to: {}
-*** Update File: {}
-*** Move to: {}
-@@
--old
-+updated
-*** End Patch",
+        "*** Begin Patch\n*** Update File: {}\n*** Move to: {}\n*** Update File: {}\n*** Move to: {}\n@@\n-old\n+updated\n*** End Patch",
         source.display(),
         middle.display(),
         middle.display(),

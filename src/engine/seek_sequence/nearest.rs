@@ -2,7 +2,7 @@ mod alignment;
 mod corpus;
 mod scoring;
 use self::{alignment::fit, corpus::NormalizedCorpus, scoring::MIN_ACCEPTED_SCORE};
-use super::{SequenceMatch, normalize::collapse_spaces};
+use super::{SequenceMatch, rules::RuleChain};
 pub(super) struct SearchIndex {
     target: NormalizedCorpus,
 }
@@ -26,10 +26,9 @@ impl SearchIndex {
 fn flatten_pattern(pattern: &[String]) -> Vec<char> {
     let mut chars = Vec::new();
     for line in pattern {
-        let normalized = collapse_spaces(line);
-        if normalized.is_empty() {
+        let Some(normalized) = RuleChain::complete().key(line) else {
             continue;
-        }
+        };
         if !chars.is_empty() {
             chars.push('\n');
         }

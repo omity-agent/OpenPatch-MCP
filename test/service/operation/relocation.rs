@@ -1,4 +1,4 @@
-use super::{ids_from, service};
+use super::{ids_from, service, target};
 use crate::operation::result::OperationOutput;
 use std::{fs, path::Path};
 #[path = "relocation/failures.rs"]
@@ -29,18 +29,9 @@ fn assert_operations(output: &OperationOutput, expected: &[(&str, &Path)]) -> Ve
 }
 #[test]
 fn same_path_move_with_content_changes_remains_edit() {
-    let directory = tempfile::tempdir().unwrap();
-    let service = service(&directory);
-    let target = directory.path().join("target.txt");
-    fs::write(&target, "old\n").unwrap();
+    let (_directory, service, target) = target("old\n");
     let patch = format!(
-        "*** Begin Patch
-*** Update File: {}
-*** Move to: {}
-@@
--old
-+new
-*** End Patch",
+        "*** Begin Patch\n*** Update File: {}\n*** Move to: {}\n@@\n-old\n+new\n*** End Patch",
         target.display(),
         target.display()
     );

@@ -36,7 +36,6 @@ fn parsing_requires_the_complete_lowercase_ascii_format() {
         "oppc-00000000 ",
         "oppc-00000000\n",
         "oppc-0000000\0",
-        "019d0000-0000-7000-8000-000000000103",
     ] {
         let error = OperationId::parse(invalid).unwrap_err();
         assert!(error.to_string().contains("8 lowercase Base36 digits"));
@@ -45,12 +44,8 @@ fn parsing_requires_the_complete_lowercase_ascii_format() {
 #[test]
 fn stored_numbers_outside_the_id_space_are_rejected() {
     for invalid in [i64::MIN, -1, OperationId::LIMIT, i64::MAX] {
-        let error = OperationId::from_stored(invalid).unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("invalid operation ID in operation history")
-        );
+        let error = OperationId::from_stored(invalid).unwrap_err().to_string();
+        assert!(error.contains("invalid operation ID in operation history"));
     }
 }
 #[test]

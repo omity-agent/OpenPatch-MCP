@@ -1,6 +1,9 @@
 use super::HistoryStore;
 use crate::operation::model::{FileState, Mutation, OperationId, OperationKind};
-use std::path::PathBuf;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 #[path = "persistence/integrity.rs"]
 mod integrity;
 #[path = "persistence/interruption.rs"]
@@ -27,6 +30,18 @@ fn mutation() -> Mutation {
         FileState::Missing,
         present("contents"),
     )
+}
+fn move_directory() -> tempfile::TempDir {
+    let directory = tempfile::tempdir().unwrap();
+    fs::write(directory.path().join("source.txt"), "source").unwrap();
+    fs::write(directory.path().join("destination.txt"), "displaced").unwrap();
+    directory
+}
+fn read(root: &Path, name: &str) -> String {
+    fs::read_to_string(root.join(name)).unwrap()
+}
+fn assert_file(root: &Path, name: &str, expected: &str) {
+    assert_eq!(read(root, name), expected, "{name}");
 }
 #[test]
 fn states_round_trip_and_shared_contents_are_stored_once() {
@@ -67,13 +82,11 @@ fn pruning_releases_only_last_references_and_keeps_newest_thousand() {
     assert_eq!(store.operations.len(&transaction).unwrap(), 1000);
     assert_eq!(store.contents.len(&transaction).unwrap(), 1001);
     let digest = blake3::hash(b"shared");
-    assert_eq!(
-        store
-            .references
-            .get(&transaction, digest.as_bytes())
-            .unwrap(),
-        Some(1000)
-    );
+    let references = store
+        .references
+        .get(&transaction, digest.as_bytes())
+        .unwrap();
+    assert_eq!(references, Some(1000));
 }
 #[test]
 fn aborted_write_does_not_leave_orphaned_content() {

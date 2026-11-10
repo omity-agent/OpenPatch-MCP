@@ -1,5 +1,5 @@
 use super::{HistoryStore, mutation, present, record, store};
-use crate::operation::model::{Mutation, OperationId};
+use crate::operation::model::{Mutation, OperationId, OperationKind};
 use crate::operation::store::ledger::allocate;
 #[test]
 fn collisions_retry_without_overwriting_history_or_pending_ids() {
@@ -73,16 +73,12 @@ fn non_unicode_paths_round_trip_without_loss() {
         use std::os::unix::ffi::OsStringExt as _;
         std::ffi::OsString::from_vec(vec![0xff, b'a'])
     };
-    let mutation = Mutation {
-        display_path: path.clone().into(),
-        changes: smallvec::smallvec![crate::operation::model::PathChange {
-            role: crate::operation::model::PathRole::Single,
-            path: path.into(),
-            before: present("before"),
-            after: present("after"),
-        }],
-        ..mutation()
-    };
+    let mutation = Mutation::single(
+        OperationKind::Edit,
+        path.into(),
+        present("before"),
+        present("after"),
+    );
     let id = record(&store, &mutation);
     assert_eq!(store.load(id).unwrap().changes, mutation.changes);
 }

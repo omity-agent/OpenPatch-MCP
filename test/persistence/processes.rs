@@ -1,3 +1,4 @@
+use super::{assert_file, move_directory, read};
 use crate::operation::OperationService;
 use core::time::Duration;
 use std::{
@@ -52,28 +53,17 @@ fn simultaneous_processes_share_history_and_serialize_file_edits() {
         assert!(child.wait().unwrap().success());
     }
     let ids = (0_u8..4)
-        .map(|index| fs::read_to_string(directory.path().join(format!("result-{index}"))).unwrap())
+        .map(|index| read(directory.path(), &format!("result-{index}")))
         .collect::<Vec<_>>();
-    assert_eq!(
-        fs::read_to_string(directory.path().join("counter.txt"))
-            .unwrap()
-            .lines()
-            .count(),
-        4
-    );
+    assert_eq!(read(directory.path(), "counter.txt").lines().count(), 4);
     let undone = service.undo(&ids);
     assert!(undone.succeeded(), "{}", undone.render());
-    assert_eq!(
-        fs::read_to_string(directory.path().join("counter.txt")).unwrap(),
-        ""
-    );
+    assert_file(directory.path(), "counter.txt", "");
 }
 #[test]
 fn already_running_service_recovers_another_process_before_accepting_edits() {
-    let directory = tempfile::tempdir().unwrap();
+    let directory = move_directory();
     let root = directory.path();
-    fs::write(root.join("source.txt"), "source").unwrap();
-    fs::write(root.join("destination.txt"), "displaced").unwrap();
     let service = OperationService::open(&root.join("history.lmdb")).unwrap();
     super::interruption::crash(root, "destination");
     let output = service.apply(&format!(
@@ -82,17 +72,11 @@ fn already_running_service_recovers_another_process_before_accepting_edits() {
     ));
     assert!(output.succeeded(), "{}", output.render());
     assert!(!root.join("source.txt").exists());
-    assert_eq!(
-        fs::read_to_string(root.join("destination.txt")).unwrap(),
-        "source"
-    );
-    let recovered_id = fs::read_to_string(root.join("id")).unwrap();
+    assert_file(root, "destination.txt", "source");
+    let recovered_id = read(root, "id");
     let undone = service.undo(&[recovered_id]);
     assert!(undone.succeeded(), "{}", undone.render());
-    assert_eq!(
-        fs::read_to_string(root.join("source.txt")).unwrap(),
-        "source"
-    );
+    assert_file(root, "source.txt", "source");
 }
 #[test]
 fn writer() {

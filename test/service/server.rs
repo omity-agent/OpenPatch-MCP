@@ -2,16 +2,14 @@ use super::Application;
 use crate::service::cli::InputStyle;
 use rmcp::{
     ClientHandler, ServiceExt,
-    model::{CallToolRequestParams, ClientRequest, Request},
+    model::{CallToolRequestParams, CallToolResult, ClientRequest, Request},
+    serde_json::{Value, json},
 };
 use std::fs;
-#[path = "server/general.rs"]
-mod general;
 #[path = "server/structured.rs"]
 mod structured;
 #[path = "server/undo_protocol.rs"]
 mod undo_protocol;
-use structured::{verify_failure, verify_success};
 #[derive(Clone, Default)]
 struct TestClient;
 #[expect(
@@ -19,100 +17,112 @@ struct TestClient;
     reason = "default client handlers are enough for this in-process test"
 )]
 impl ClientHandler for TestClient {}
-#[tokio::test]
-async fn openai_style_applies_multiline_patch() {
-    let directory = tempfile::tempdir().unwrap();
-    let target_path = directory.path().join("target.txt");
-    fs::write(&target_path, "old\n").unwrap();
-    let application =
-        Application::with_database(&directory.path().join("history.lmdb"), InputStyle::Openai)
-            .unwrap();
-    verify_schemas(&application, &["patch"]);
+type Client = rmcp::service::RunningService<rmcp::RoleClient, TestClient>;
+async fn connect(
+    application: Application,
+) -> (Client, tokio::task::JoinHandle<anyhow::Result<()>>) {
     let (server_transport, client_transport) = tokio::io::duplex(8192);
-    let server_handle = tokio::spawn(async move {
-        let service = ServiceExt::serve(application, server_transport).await?;
-        service.waiting().await?;
-        anyhow::Ok(())
+    let server = tokio::spawn(async move {
+        ServiceExt::serve(application, server_transport)
+            .await?
+            .waiting()
+            .await?;
+        Ok(())
     });
     let client = ServiceExt::serve(TestClient, client_transport)
         .await
         .unwrap();
-    let patch = [
-        "*** Begin Patch",
-        &format!("*** Update File: {}", target_path.display()),
-        "@@",
-        "-old",
-        "+new",
-        "*** End Patch",
-        "",
-    ]
-    .join("\n");
-    let tool_result = call_apply_patch(&client, &patch).await;
-    assert_eq!(tool_result.is_error, Some(false));
-    let content = tool_result
-        .content
-        .first()
-        .unwrap()
-        .as_text()
-        .unwrap()
-        .text
-        .as_str();
-    assert!(content.find("after:").unwrap() < content.find("<ID>").unwrap());
-    verify_success(&tool_result.structured_content.unwrap(), &target_path);
-    let failed_result = call_apply_patch(&client, "").await;
-    assert_eq!(failed_result.is_error, Some(true));
-    verify_failure(&failed_result.structured_content.unwrap());
-    assert_eq!(fs::read_to_string(&target_path).unwrap(), "new\n");
-    client.cancel().await.unwrap();
-    server_handle.await.unwrap().unwrap();
+    (client, server)
+}
+#[tokio::test]
+async fn applies_both_input_styles_and_reports_structured_results() {
+    for style in [InputStyle::Openai, InputStyle::General] {
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("target.txt");
+        let openai = matches!(style, InputStyle::Openai);
+        let original = if openai {
+            "old\n"
+        } else {
+            "before\nold text\nafter\n"
+        };
+        let expected = if openai {
+            "new\n"
+        } else {
+            "before\nnew text\nafter\n"
+        };
+        fs::write(&target, original).unwrap();
+        let application =
+            Application::with_database(&directory.path().join("history.lmdb"), style).unwrap();
+        verify_schemas(
+            &application,
+            if openai {
+                &["patch"]
+            } else {
+                &["new_string", "old_string", "path"]
+            },
+        );
+        let (client, server) = connect(application).await;
+        let arguments = if openai {
+            json!({"patch": format!(
+                "*** Begin Patch\n*** Update File: {}\n@@\n-old\n+new\n*** End Patch\n",
+                target.display()
+            )})
+        } else {
+            json!({"path": target, "old_string": "old text", "new_string": "new text"})
+        };
+        let result = call(&client, "apply_patch", arguments).await;
+        assert_eq!(result.is_error, Some(false));
+        structured::verify_success(
+            result.structured_content.as_ref().unwrap(),
+            &target,
+            if openai { 1 } else { 3 },
+        );
+        let text = output_text(&result);
+        assert!(text.find("after:").unwrap() < text.find("<ID>").unwrap());
+        if openai {
+            let failure = call(&client, "apply_patch", json!({"patch": ""})).await;
+            assert_eq!(failure.is_error, Some(true));
+            structured::verify_failure(failure.structured_content.as_ref().unwrap());
+        }
+        assert_eq!(fs::read_to_string(&target).unwrap(), expected);
+        client.cancel().await.unwrap();
+        server.await.unwrap().unwrap();
+    }
 }
 fn verify_schemas(application: &Application, expected_properties: &[&str]) {
     let tools = application.tool_router.list_all();
     assert_eq!(tools.len(), 2);
-    assert!(tools.iter().all(|tool| tool.output_schema.is_some()));
     for tool in &tools {
-        let schema = sonic_rs::to_string(tool.output_schema.as_ref().unwrap()).unwrap();
-        assert!(!schema.contains(r#""format":"uint""#));
-        let output = rmcp::serde_json::to_value(tool.output_schema.as_ref().unwrap()).unwrap();
+        let schema = tool.output_schema.as_ref().unwrap();
+        assert!(
+            !sonic_rs::to_string(schema)
+                .unwrap()
+                .contains(r#""format":"uint""#)
+        );
+        let output = rmcp::serde_json::to_value(schema).unwrap();
         assert_eq!(
             output.pointer("/$defs/OutputOperationKind/enum").unwrap(),
-            &rmcp::serde_json::json!(["ADD", "EDIT", "DELETE", "MOVE"])
+            &json!(["ADD", "EDIT", "DELETE", "MOVE"])
         );
-        let success = output
-            .pointer("/$defs/SuccessfulOperation/properties")
-            .unwrap();
-        assert_eq!(
-            success.get("id").unwrap().get("pattern").unwrap().as_str(),
-            Some(crate::operation::model::ID_PATTERN)
-        );
-        assert_eq!(
-            success
-                .get("undoOf")
-                .unwrap()
-                .get("pattern")
-                .unwrap()
-                .as_str(),
-            Some(crate::operation::model::ID_PATTERN)
-        );
+        for field in ["id", "undoOf"] {
+            assert_eq!(
+                *output
+                    .pointer(&format!(
+                        "/$defs/SuccessfulOperation/properties/{field}/pattern"
+                    ))
+                    .unwrap(),
+                crate::operation::model::ID_PATTERN
+            );
+        }
     }
     let undo = tools.iter().find(|tool| tool.name == "undo_patch").unwrap();
     assert_eq!(
         undo.input_schema.as_ref(),
-        rmcp::serde_json::json!({
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "type": "object",
-            "properties": {
-                "ids": {
-                    "type": "array",
-                    "minItems": 1,
-                    "items": {
-                        "type": "string",
-                        "pattern": crate::operation::model::ID_PATTERN
-                    }
-                }
-            },
-            "required": ["ids"],
-            "additionalProperties": false
+        json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object",
+            "properties": {"ids": {"type": "array", "minItems": 1_u64,
+                "items": {"type": "string", "pattern": crate::operation::model::ID_PATTERN}}},
+            "required": ["ids"], "additionalProperties": false
         })
         .as_object()
         .unwrap()
@@ -133,18 +143,33 @@ fn verify_schemas(application: &Application, expected_properties: &[&str]) {
     properties.sort_unstable();
     assert_eq!(properties, expected_properties);
 }
-async fn call_apply_patch(
-    client: &rmcp::service::RunningService<rmcp::RoleClient, TestClient>,
-    patch: &str,
-) -> rmcp::model::CallToolResult {
-    let mut arguments = rmcp::serde_json::Map::new();
-    arguments.insert(String::from("patch"), rmcp::serde_json::Value::from(patch));
+async fn call(client: &Client, name: &str, arguments: Value) -> CallToolResult {
     let request = ClientRequest::CallToolRequest(Request::new(
-        CallToolRequestParams::new("apply_patch").with_arguments(arguments),
+        CallToolRequestParams::new(name.to_owned())
+            .with_arguments(arguments.as_object().unwrap().clone()),
     ));
-    let result = client.peer().send_request(request).await.unwrap();
-    let rmcp::model::ServerResult::CallToolResult(tool_result) = result else {
+    let rmcp::model::ServerResult::CallToolResult(result) =
+        client.peer().send_request(request).await.unwrap()
+    else {
         panic!("expected call tool result");
     };
-    tool_result
+    result
+}
+fn output_text(result: &CallToolResult) -> &str {
+    result
+        .content
+        .first()
+        .unwrap()
+        .as_text()
+        .unwrap()
+        .text
+        .as_str()
+}
+fn output_value<'result>(result: &'result CallToolResult, pointer: &str) -> &'result Value {
+    result
+        .structured_content
+        .as_ref()
+        .unwrap()
+        .pointer(pointer)
+        .unwrap()
 }

@@ -1,4 +1,4 @@
-use super::{id_from, service};
+use super::{apply, assert_contents, id_from, service, target, undo};
 use std::fs;
 fn assert_single_kind(output: &str, kind: &str) {
     assert_eq!(output.matches("<ID>").count(), 1, "{output}");
@@ -10,80 +10,43 @@ fn assert_single_kind(output: &str, kind: &str) {
     }
 }
 #[test]
-fn delete_add_and_edit_are_coalesced_into_one_edit() {
-    let directory = tempfile::tempdir().unwrap();
-    let service = service(&directory);
-    let target = directory.path().join("target.txt");
-    fs::write(&target, "original\n").unwrap();
-    let patch = format!(
-        "*** Begin Patch
-*** Delete File: {}
-*** Add File: {}
-+replacement
-*** Update File: {}
-@@
--replacement
-+final
-*** End Patch",
-        target.display(),
-        target.display(),
-        target.display()
-    );
-    let applied = service.apply(&patch);
-    assert!(applied.succeeded(), "{}", applied.render());
-    assert_single_kind(&applied.render(), "EDIT");
-    assert_eq!(fs::read_to_string(&target).unwrap(), "final\n");
-    let undone = service.undo(&[id_from(&applied.render())]);
-    assert!(undone.succeeded(), "{}", undone.render());
-    assert_eq!(fs::read_to_string(target).unwrap(), "original\n");
-}
-#[test]
-fn edits_followed_by_delete_are_coalesced_into_one_delete() {
-    let directory = tempfile::tempdir().unwrap();
-    let service = service(&directory);
-    let target = directory.path().join("target.txt");
-    fs::write(&target, "one\n").unwrap();
-    let patch = format!(
-        "*** Begin Patch
-*** Update File: {}
-@@
--one
-+two
-*** Update File: {}
-@@
--two
-+three
-*** Delete File: {}
-*** End Patch",
-        target.display(),
-        target.display(),
-        target.display()
-    );
-    let applied = service.apply(&patch);
-    assert!(applied.succeeded(), "{}", applied.render());
-    assert_single_kind(&applied.render(), "DELETE");
-    assert!(!target.exists());
-    let undone = service.undo(&[id_from(&applied.render())]);
-    assert!(undone.succeeded(), "{}", undone.render());
-    assert_eq!(fs::read_to_string(target).unwrap(), "one\n");
+fn edits_and_deletes_coalesce_and_remain_undoable() {
+    for (original, kind, expected, body) in [
+        (
+            "original\n",
+            "EDIT",
+            Some("final\n"),
+            "*** Delete File: {path}\n*** Add File: {path}\n+replacement\n*** Update File: {path}\n@@\n-replacement\n+final",
+        ),
+        (
+            "one\n",
+            "DELETE",
+            None,
+            "*** Update File: {path}\n@@\n-one\n+two\n*** Update File: {path}\n@@\n-two\n+three\n*** Delete File: {path}",
+        ),
+        (
+            "added\n",
+            "DELETE",
+            None,
+            "*** Add File: {path}\n+added\n*** Delete File: {path}",
+        ),
+    ] {
+        let (_directory, service, target) = target(original);
+        let applied = apply(
+            &service,
+            &body.replace("{path}", &target.display().to_string()),
+        );
+        assert_single_kind(&applied, kind);
+        assert_contents(&target, expected);
+        undo(&service, &id_from(&applied));
+        assert_eq!(fs::read_to_string(target).unwrap(), original);
+    }
 }
 #[test]
 fn fully_cancelled_operations_return_an_error() {
-    let directory = tempfile::tempdir().unwrap();
-    let service = service(&directory);
-    let target = directory.path().join("target.txt");
-    fs::write(&target, "old\n").unwrap();
+    let (_directory, service, target) = target("old\n");
     let patch = format!(
-        "*** Begin Patch
-*** Update File: {}
-@@
--old
-+new
-*** Update File: {}
-@@
--new
-+old
-*** End Patch",
+        "*** Begin Patch\n*** Update File: {}\n@@\n-old\n+new\n*** Update File: {}\n@@\n-new\n+old\n*** End Patch",
         target.display(),
         target.display()
     );
@@ -98,29 +61,6 @@ fn fully_cancelled_operations_return_an_error() {
     assert_eq!(fs::read_to_string(target).unwrap(), "old\n");
 }
 #[test]
-fn already_applied_add_followed_by_delete_still_deletes_the_file() {
-    let directory = tempfile::tempdir().unwrap();
-    let service = service(&directory);
-    let target = directory.path().join("target.txt");
-    fs::write(&target, "added\n").unwrap();
-    let patch = format!(
-        "*** Begin Patch
-*** Add File: {}
-+added
-*** Delete File: {}
-*** End Patch",
-        target.display(),
-        target.display()
-    );
-    let applied = service.apply(&patch);
-    assert!(applied.succeeded(), "{}", applied.render());
-    assert_single_kind(&applied.render(), "DELETE");
-    assert!(!target.exists());
-    let undone = service.undo(&[id_from(&applied.render())]);
-    assert!(undone.succeeded(), "{}", undone.render());
-    assert_eq!(fs::read_to_string(target).unwrap(), "added\n");
-}
-#[test]
 fn move_chain_is_coalesced_into_one_move() {
     let directory = tempfile::tempdir().unwrap();
     let service = service(&directory);
@@ -129,26 +69,21 @@ fn move_chain_is_coalesced_into_one_move() {
     let destination = directory.path().join("destination.txt");
     fs::write(&source, "source\n").unwrap();
     fs::write(&destination, "destination\n").unwrap();
-    let patch = format!(
-        "*** Begin Patch
-*** Update File: {}
-*** Move to: {}
-*** Update File: {}
-*** Move to: {}
-*** End Patch",
-        source.display(),
-        middle.display(),
-        middle.display(),
-        destination.display()
+    let applied = apply(
+        &service,
+        &format!(
+            "*** Update File: {}\n*** Move to: {}\n*** Update File: {}\n*** Move to: {}",
+            source.display(),
+            middle.display(),
+            middle.display(),
+            destination.display()
+        ),
     );
-    let applied = service.apply(&patch);
-    assert!(applied.succeeded(), "{}", applied.render());
-    assert_single_kind(&applied.render(), "MOVE");
+    assert_single_kind(&applied, "MOVE");
     assert!(!source.exists());
     assert!(!middle.exists());
     assert_eq!(fs::read_to_string(&destination).unwrap(), "source\n");
-    let undone = service.undo(&[id_from(&applied.render())]);
-    assert!(undone.succeeded(), "{}", undone.render());
+    let undone = undo(&service, &id_from(&applied));
     assert_single_kind(&undone.render(), "MOVE");
     assert_eq!(fs::read_to_string(source).unwrap(), "source\n");
     assert!(!middle.exists());

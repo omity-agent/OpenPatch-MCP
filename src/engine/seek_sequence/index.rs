@@ -1,12 +1,12 @@
-use super::{MatchMode, SequenceMatch};
+use super::{SequenceMatch, rules::RuleChain};
 use alloc::borrow::Cow;
 use indexmap::IndexMap;
 use rustc_hash::FxBuildHasher;
 use smallvec::SmallVec;
 type Posting = SmallVec<[usize; 1]>;
 type PatternKeys = SmallVec<[usize; 8]>;
-pub(super) struct SearchTier<'text> {
-    mode: MatchMode,
+pub(super) struct SequenceIndex<'text> {
+    chain: RuleChain,
     entries: Vec<LineEntry>,
     postings: IndexMap<Cow<'text, str>, Posting, FxBuildHasher>,
 }
@@ -14,17 +14,17 @@ struct LineEntry {
     line_index: usize,
     key_id: usize,
 }
-impl<'text> SearchTier<'text> {
-    pub(super) fn new(lines: &[&'text str], mode: MatchMode) -> Self {
-        let mut tier = Self {
-            mode,
+impl<'text> SequenceIndex<'text> {
+    pub(super) fn new(lines: &[&'text str], chain: RuleChain) -> Self {
+        let mut index = Self {
+            chain,
             entries: Vec::with_capacity(lines.len()),
             postings: IndexMap::with_capacity_and_hasher(lines.len(), FxBuildHasher),
         };
-        for (index, line) in lines.iter().enumerate() {
-            tier.push_line(index, line);
+        for (line_index, line) in lines.iter().enumerate() {
+            index.push_line(line_index, line);
         }
-        tier
+        index
     }
     pub(super) fn find(
         &self,
@@ -53,10 +53,9 @@ impl<'text> SearchTier<'text> {
         self.find_from_anchor(&pattern_keys, start, last_entry_start)
     }
     fn push_line(&mut self, index: usize, line: &'text str) {
-        let key = self.mode.key(line);
-        if self.mode.skips_empty_lines() && key.is_empty() {
+        let Some(key) = self.chain.key(line) else {
             return;
-        }
+        };
         let entry = self.postings.entry(key);
         let key_id = entry.index();
         let entry_index = self.entries.len();
@@ -69,10 +68,9 @@ impl<'text> SearchTier<'text> {
     fn pattern_keys(&self, pattern: &[String]) -> Option<PatternKeys> {
         let mut pattern_keys = SmallVec::new();
         for line in pattern {
-            let key = self.mode.key(line);
-            if self.mode.skips_empty_lines() && key.is_empty() {
+            let Some(key) = self.chain.key(line) else {
                 continue;
-            }
+            };
             pattern_keys.push(self.postings.get_index_of(key.as_ref())?);
         }
         Some(pattern_keys)

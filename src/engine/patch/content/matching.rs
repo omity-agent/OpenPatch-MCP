@@ -156,8 +156,8 @@ fn plan_insertion<'chunk>(
                         .flat_map(|candidate| candidate.new_lines.iter().map(String::as_str)))
                 })
         });
-    Ok(already_inserted.map_or_else(
-        || ChunkPlan {
+    Ok(already_inserted.map_or(
+        ChunkPlan {
             forward: Some((insertion_index, 0, new_lines)),
             reverse: None,
             next_line_index: insertion_index,
