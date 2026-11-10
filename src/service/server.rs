@@ -107,6 +107,10 @@ fn to_tool_result(output: &OperationOutput) -> Result<CallToolResult, McpError> 
     Ok(result)
 }
 # [tool_handler (router = self . tool_router)]
+#[expect(
+    clippy::unused_async_trait_impl,
+    reason = "The rmcp tool_handler macro generates an async list_tools method without await"
+)]
 impl ServerHandler for Application {}
 #[cfg(test)]
 #[path = "../../test/service/server.rs"]

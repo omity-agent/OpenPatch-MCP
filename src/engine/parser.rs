@@ -1,5 +1,6 @@
 mod boundary;
-mod parse;
+mod chunks;
+mod hunks;
 use smallvec::SmallVec;
 use std::path::PathBuf;
 pub(crate) const BEGIN_PATCH_MARKER: &str = "*** Begin Patch";
@@ -12,15 +13,13 @@ pub(crate) const EOF_MARKER: &str = "*** End of File";
 pub(crate) const CHANGE_CONTEXT_MARKER: &str = "@@ ";
 pub(crate) const EMPTY_CHANGE_CONTEXT_MARKER: &str = "@@";
 pub fn parse_patch(patch: &str) -> Result<Vec<FileHunk>, ParseFailure> {
-    parse::parse_patch(patch)
+    boundary::parse_patch_lines(patch)
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FileHunk {
     Add {
         path: PathBuf,
         contents: String,
-        line_count: usize,
-        character_count: usize,
     },
     Delete {
         path: PathBuf,
@@ -30,6 +29,22 @@ pub enum FileHunk {
         move_path: Option<PathBuf>,
         chunks: Vec<UpdateChunk>,
     },
+}
+impl FileHunk {
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Borrow non-Copy paths without cloning the patch buffers"
+    )]
+    pub(crate) const fn paths(&self) -> (&PathBuf, Option<&PathBuf>) {
+        match self {
+            Self::Add { path, contents: _ } | Self::Delete { path } => (path, None),
+            Self::Update {
+                path,
+                move_path,
+                chunks: _,
+            } => (path, move_path.as_ref()),
+        }
+    }
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpdateChunk {

@@ -1,4 +1,4 @@
-use super::{Application, InputStyle, call, connect, json, output_text, output_value};
+use super::{InputStyle, call, connect, json, output_text, output_value};
 use core::fmt::Write as _;
 use std::fs;
 #[tokio::test]
@@ -20,10 +20,7 @@ async fn apply_and_undo_share_component_based_path_labels() {
         ),
     ] {
         let directory = tempfile::tempdir().unwrap();
-        let application =
-            Application::with_database(&directory.path().join("paths.lmdb"), InputStyle::Openai)
-                .unwrap();
-        let (client, server) = connect(application).await;
+        let (client, server) = connect(&directory, InputStyle::Openai).await;
         let mut patch = String::from("*** Begin Patch\r\n");
         for name in &names {
             writeln!(
@@ -75,9 +72,7 @@ async fn mixed_failures_and_expansion_errors_do_not_expose_absolute_paths() {
     let root = directory.path();
     let blocked = root.join("tests/a.rs");
     fs::create_dir_all(&blocked).unwrap();
-    let application =
-        Application::with_database(&root.join("failures.lmdb"), InputStyle::Openai).unwrap();
-    let (client, server) = connect(application).await;
+    let (client, server) = connect(&directory, InputStyle::Openai).await;
     let patch = format!(
         "*** Begin Patch\n*** Add File: {}\n+contents\n*** Update File: {}\n@@\n-old\n+new\n*** End Patch",
         root.join("src/a.rs").display(),

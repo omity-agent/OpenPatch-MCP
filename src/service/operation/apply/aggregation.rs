@@ -104,8 +104,8 @@ fn effective_before(file: &VirtualFile) -> Option<&FileState> {
 }
 const fn transition_kind(before: &FileState, after: &FileState) -> OperationKind {
     match (before, after) {
-        (FileState::Missing, FileState::Present(_)) => OperationKind::Add,
-        (FileState::Present(_), FileState::Missing) => OperationKind::Delete,
+        (&FileState::Missing, &FileState::Present(_)) => OperationKind::Add,
+        (&FileState::Present(_), &FileState::Missing) => OperationKind::Delete,
         _ => OperationKind::Edit,
     }
 }

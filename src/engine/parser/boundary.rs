@@ -4,31 +4,23 @@ pub(crate) fn parse_patch_lines(patch: &str) -> Result<Vec<FileHunk>, ParseFailu
     let mut lines = Vec::with_capacity(crate::text::line_count(trimmed_patch));
     lines.extend(trimmed_patch.lines());
     let patch_lines = check_lenient(&lines)?;
-    crate::parser::parse::parse_hunks(patch_lines)
+    crate::parser::hunks::parse_hunks(patch_lines)
 }
 fn check_lenient<'line>(
     original_lines: &'line [&'line str],
 ) -> Result<&'line [&'line str], ParseFailure> {
     match check_strict(original_lines) {
         Ok(lines) => Ok(lines),
-        Err(original_error) => {
-            let Some(first) = original_lines.first().copied() else {
-                return Err(original_error);
-            };
-            let Some(last) = original_lines.last().copied() else {
-                return Err(original_error);
-            };
-            if !is_heredoc_wrapper(first, last, original_lines.len()) {
-                return Err(original_error);
+        Err(original_error) => match *original_lines {
+            [first, .., last]
+                if matches!(first, "<<EOF" | "<<'EOF'" | "<<\"EOF\"")
+                    && last.ends_with("EOF")
+                    && original_lines.len() >= 4 =>
+            {
+                check_strict(&original_lines[1..original_lines.len() - 1])
             }
-            let Some((_, tail)) = original_lines.split_first() else {
-                return Err(original_error);
-            };
-            let Some((_, inner_lines)) = tail.split_last() else {
-                return Err(original_error);
-            };
-            check_strict(inner_lines)
-        }
+            _ => Err(original_error),
+        },
     }
 }
 fn check_strict<'line>(lines: &'line [&'line str]) -> Result<&'line [&'line str], ParseFailure> {
@@ -45,7 +37,4 @@ fn check_strict<'line>(lines: &'line [&'line str]) -> Result<&'line [&'line str]
             "The last line of the patch must be '*** End Patch'",
         )),
     }
-}
-fn is_heredoc_wrapper(first: &str, last: &str, line_count: usize) -> bool {
-    matches!(first, "<<EOF" | "<<'EOF'" | "<<\"EOF\"") && last.ends_with("EOF") && line_count >= 4
 }

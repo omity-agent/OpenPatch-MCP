@@ -66,45 +66,48 @@ fn edit_undo_preserves_unrelated_changes_and_can_be_undone() {
     fs::write(&target, "new\nkeep changed\n").unwrap();
     let first_id = id_from(&applied);
     let undone = undo(&service, &first_id);
-    assert_eq!(fs::read_to_string(&target).unwrap(), "old\nkeep changed\n");
+    assert_contents(&target, Some("old\nkeep changed\n"));
     undo(&service, &id_from(&undone.render()));
-    assert_eq!(fs::read_to_string(target).unwrap(), "new\nkeep changed\n");
-}
-#[test]
-fn undo_add_restores_overwritten_file() {
-    let (_directory, service, target) = target("original\n");
-    let applied = apply(
-        &service,
-        &format!("*** Add File: {}\n+replacement", target.display()),
-    );
-    let undone = undo(&service, &id_from(&applied));
-    assert_eq!(fs::read_to_string(target).unwrap(), "original\n");
-    assert!(undone.render().contains("<EDIT>"));
+    assert_contents(&target, Some("new\nkeep changed\n"));
 }
 #[test]
 fn undo_move_restores_source_and_overwritten_destination() {
-    let directory = tempfile::tempdir().unwrap();
-    let service = service(&directory);
-    let source = directory.path().join("source.txt");
-    let destination = directory.path().join("destination.txt");
-    fs::write(&source, "source\n").unwrap();
-    fs::write(&destination, "displaced\n").unwrap();
-    let applied = apply(
-        &service,
-        &format!(
-            "*** Update File: {}\n*** Move to: {}",
-            source.display(),
-            destination.display()
-        ),
-    );
-    assert!(applied.contains("<MOVE>"));
-    fs::write(&destination, "source\nextra\n").unwrap();
-    let undone = undo(&service, &id_from(&applied));
-    assert!(undone.render().contains("<MOVE>"));
-    assert_eq!(fs::read_to_string(source).unwrap(), "source\nextra\n");
-    assert_eq!(fs::read_to_string(&destination).unwrap(), "displaced\n");
-    let redone = undo(&service, &id_from(&undone.render()));
-    assert!(redone.render().contains("<MOVE>"));
-    assert!(!directory.path().join("source.txt").exists());
-    assert_eq!(fs::read_to_string(destination).unwrap(), "source\nextra\n");
+    for names in [
+        &["source.txt", "destination.txt"][..],
+        &["source.txt", "middle.txt", "destination.txt"][..],
+    ] {
+        let directory = tempfile::tempdir().unwrap();
+        let service = service(&directory);
+        let root = directory.path();
+        let source = root.join("source.txt");
+        let destination = root.join("destination.txt");
+        fs::write(&source, "source\n").unwrap();
+        fs::write(&destination, "displaced\n").unwrap();
+        let body = names
+            .array_windows::<2>()
+            .map(|&[from, to]| {
+                format!(
+                    "*** Update File: {}\n*** Move to: {}",
+                    root.join(from).display(),
+                    root.join(to).display()
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let applied = apply(&service, &body);
+        assert_eq!(ids_from(&applied).len(), 1);
+        assert!(applied.contains("<MOVE>"));
+        assert_contents(&source, None);
+        assert!(!root.join("middle.txt").exists());
+        fs::write(&destination, "source\nextra\n").unwrap();
+        let undone = undo(&service, &id_from(&applied));
+        assert!(undone.render().contains("<MOVE>"));
+        assert_contents(&source, Some("source\nextra\n"));
+        assert_contents(&destination, Some("displaced\n"));
+        assert!(!root.join("middle.txt").exists());
+        let redone = undo(&service, &id_from(&undone.render()));
+        assert!(redone.render().contains("<MOVE>"));
+        assert_contents(&source, None);
+        assert_contents(&destination, Some("source\nextra\n"));
+    }
 }

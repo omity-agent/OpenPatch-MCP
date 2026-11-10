@@ -14,12 +14,7 @@ pub(crate) fn plan_hunk(
     snapshot: &mut impl FnMut(&Path, &str) -> anyhow::Result<FileState>,
 ) -> anyhow::Result<PlannedHunk> {
     match hunk {
-        FileHunk::Add {
-            path,
-            contents,
-            line_count: _,
-            character_count: _,
-        } => plan_add(path, contents, snapshot),
+        FileHunk::Add { path, contents } => plan_add(path, contents, snapshot),
         FileHunk::Delete { path } => plan_delete(path, snapshot),
         FileHunk::Update {
             path,
@@ -64,17 +59,16 @@ fn plan_delete(
     })
 }
 pub(crate) fn hunk_context(hunk: &FileHunk) -> (OperationKind, PathBuf) {
-    match hunk {
+    let (path, move_path) = hunk.paths();
+    match *hunk {
         FileHunk::Add {
-            path,
+            path: _,
             contents: _,
-            line_count: _,
-            character_count: _,
         } => (OperationKind::Add, path.clone()),
-        FileHunk::Delete { path } => (OperationKind::Delete, path.clone()),
+        FileHunk::Delete { path: _ } => (OperationKind::Delete, path.clone()),
         FileHunk::Update {
-            path,
-            move_path,
+            path: _,
+            move_path: _,
             chunks: _,
         } => match move_path {
             Some(destination) if destination != path => (OperationKind::Move, destination.clone()),

@@ -57,7 +57,7 @@ pub(super) fn plan_chunk<'chunk>(
     }
     if fallback_new.is_empty() {
         let insertion_index = if chunk.is_end_of_file {
-            logical_end(original_lines)
+            original_lines.len()
         } else {
             search_start
         };
@@ -132,7 +132,7 @@ fn plan_insertion<'chunk>(
     remaining_chunks: &'chunk [UpdateChunk],
     line_index: usize,
 ) -> anyhow::Result<ChunkPlan<'chunk>> {
-    let insertion_index = logical_end(original_lines);
+    let insertion_index = original_lines.len();
     let new_lines = chunk.new_lines.as_slice();
     let insertion_run = remaining_chunks
         .iter()
@@ -168,11 +168,4 @@ fn plan_insertion<'chunk>(
             next_line_index: start + new_lines.len(),
         },
     ))
-}
-fn logical_end(lines: &[&str]) -> usize {
-    if lines.last().is_some_and(|line| line.is_empty()) {
-        lines.len() - 1
-    } else {
-        lines.len()
-    }
 }

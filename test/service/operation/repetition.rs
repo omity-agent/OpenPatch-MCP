@@ -10,6 +10,12 @@ fn idempotent_and_repeated_updates_keep_one_undoable_operation() {
         ),
         ("added\n", "added\n", None, "*** Add File: {path}\n+added"),
         (
+            "original\n",
+            "replacement\n",
+            Some("original\n"),
+            "*** Add File: {path}\n+replacement",
+        ),
+        (
             "one\n",
             "three\n",
             Some("one\n"),
@@ -17,16 +23,13 @@ fn idempotent_and_repeated_updates_keep_one_undoable_operation() {
         ),
     ] {
         let (_directory, service, target) = target(original);
-        let applied = apply(
-            &service,
-            &body.replace("{path}", &target.display().to_string()),
-        );
+        let patch_body = body.replace("{path}", &target.display().to_string());
+        let applied = apply(&service, &patch_body);
         assert_eq!(ids_from(&applied).len(), 1);
         assert_contents(&target, Some(expected));
         let undone = undo(&service, &id_from(&applied));
         assert_contents(&target, restored);
-        if restored.is_none() {
-            assert!(undone.render().contains("<DELETE>"));
-        }
+        assert_eq!(undone.render().contains("<DELETE>"), restored.is_none());
+        assert_eq!(undone.render().contains("<EDIT>"), restored.is_some());
     }
 }

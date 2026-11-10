@@ -1,4 +1,4 @@
-pub(crate) use super::file_state::{FileContents, FileState};
+use alloc::sync::Arc;
 use anyhow::Context as _;
 use core::fmt;
 use rmcp::schemars::JsonSchema;
@@ -6,6 +6,32 @@ use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
 use std::path::PathBuf;
 pub(crate) const ID_PATTERN: &str = "^oppc-[0-9a-z]{8}$";
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum FileState {
+    Missing,
+    Present(
+        #[expect(
+            clippy::rc_buffer,
+            reason = "Retain the owned String allocation instead of copying file-sized buffers into Arc<str>"
+        )]
+        Arc<String>,
+    ),
+}
+impl FileState {
+    pub(crate) fn present(contents: String) -> Self {
+        Self::Present(Arc::new(contents))
+    }
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Borrow the shared buffer without cloning its reference count"
+    )]
+    pub(crate) fn contents(&self) -> Option<&str> {
+        match self {
+            &Self::Missing => None,
+            Self::Present(contents) => Some(contents.as_str()),
+        }
+    }
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct OperationId(i64);
 impl OperationId {

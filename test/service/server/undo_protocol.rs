@@ -1,6 +1,4 @@
-use super::{
-    Application, CallToolResult, Client, InputStyle, call, connect, json, output_text, output_value,
-};
+use super::{CallToolResult, Client, InputStyle, call, connect, json, output_text, output_value};
 use crate::operation::model::OperationId;
 use std::fs;
 #[tokio::test]
@@ -8,10 +6,7 @@ async fn undo_accepts_ids_and_reports_short_ids_in_both_output_formats() {
     let directory = tempfile::tempdir().unwrap();
     let target = directory.path().join("undo-target.txt");
     fs::write(&target, "before\n").unwrap();
-    let application =
-        Application::with_database(&directory.path().join("protocol.lmdb"), InputStyle::Openai)
-            .unwrap();
-    let (client, server) = connect(application).await;
+    let (client, server) = connect(&directory, InputStyle::Openai).await;
     let patch = format!(
         "*** Begin Patch\n*** Update File: {}\n@@\n-before\n+after\n*** End Patch",
         target.display()

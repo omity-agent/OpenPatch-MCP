@@ -40,15 +40,15 @@ impl<'text> SequenceIndex<'text> {
             return None;
         }
         let last_entry_start = self.entries.len() - pattern_keys.len();
-        if eof {
-            return self.window_matches(last_entry_start, &pattern_keys);
-        }
         if self
             .entries
             .get(last_entry_start)
             .is_none_or(|entry| start > entry.line_index)
         {
             return None;
+        }
+        if eof {
+            return self.window_matches(last_entry_start, &pattern_keys);
         }
         self.find_from_anchor(&pattern_keys, start, last_entry_start)
     }

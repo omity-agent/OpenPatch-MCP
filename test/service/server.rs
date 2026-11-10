@@ -2,14 +2,12 @@ use super::Application;
 use crate::service::cli::InputStyle;
 use rmcp::{
     ClientHandler, ServiceExt,
-    model::{CallToolRequestParams, CallToolResult, ClientRequest, Request},
+    model::{CallToolRequestParams, CallToolResult},
     serde_json::{Value, json},
 };
-use std::fs;
+use std::{fs, path::Path};
 #[path = "server/paths.rs"]
 mod paths;
-#[path = "server/structured.rs"]
-mod structured;
 #[path = "server/undo_protocol.rs"]
 mod undo_protocol;
 #[derive(Clone, Default)]
@@ -17,8 +15,18 @@ struct TestClient;
 impl ClientHandler for TestClient {}
 type Client = rmcp::service::RunningService<rmcp::RoleClient, TestClient>;
 async fn connect(
-    application: Application,
+    directory: &tempfile::TempDir,
+    style: InputStyle,
 ) -> (Client, tokio::task::JoinHandle<anyhow::Result<()>>) {
+    let application =
+        Application::with_database(&directory.path().join("history.lmdb"), style).unwrap();
+    verify_schemas(
+        &application,
+        match style {
+            InputStyle::Openai => &["patch"],
+            InputStyle::General => &["new_string", "old_string", "path"],
+        },
+    );
     let (server_transport, client_transport) = tokio::io::duplex(8192);
     let server = tokio::spawn(async move {
         ServiceExt::serve(application, server_transport)
@@ -34,35 +42,36 @@ async fn connect(
 }
 #[tokio::test]
 async fn applies_both_input_styles_and_reports_structured_results() {
-    for style in [InputStyle::Openai, InputStyle::General] {
+    for (style, original, expected, changes) in [
+        (InputStyle::Openai, "old\n", "new\n", "@@\n-old\n+new"),
+        (InputStyle::Openai, "old\n", "new\n", "-old\n+new"),
+        (
+            InputStyle::Openai,
+            "old\n\nkeep\n",
+            "new\n\nkeep\n",
+            "@@\n-old\n+new\n\n keep",
+        ),
+        (
+            InputStyle::Openai,
+            "old\n",
+            "new\n",
+            "@@  \n-old\n+new\n*** End of File  \n\n",
+        ),
+        (
+            InputStyle::General,
+            "before\nold text\nafter\n",
+            "before\nnew text\nafter\n",
+            "",
+        ),
+    ] {
         let directory = tempfile::tempdir().unwrap();
         let target = directory.path().join("target.txt");
         let openai = matches!(style, InputStyle::Openai);
-        let original = if openai {
-            "old\n"
-        } else {
-            "before\nold text\nafter\n"
-        };
-        let expected = if openai {
-            "new\n"
-        } else {
-            "before\nnew text\nafter\n"
-        };
         fs::write(&target, original).unwrap();
-        let application =
-            Application::with_database(&directory.path().join("history.lmdb"), style).unwrap();
-        verify_schemas(
-            &application,
-            if openai {
-                &["patch"]
-            } else {
-                &["new_string", "old_string", "path"]
-            },
-        );
-        let (client, server) = connect(application).await;
+        let (client, server) = connect(&directory, style).await;
         let arguments = if openai {
             json!({"patch": format!(
-                "*** Begin Patch\n*** Update File: {}\n@@\n-old\n+new\n*** End Patch\n",
+                "*** Begin Patch\n*** Update File: {}\n{changes}\n*** End Patch\n",
                 target.display()
             )})
         } else {
@@ -70,10 +79,10 @@ async fn applies_both_input_styles_and_reports_structured_results() {
         };
         let result = call(&client, "apply_patch", arguments).await;
         assert_eq!(result.is_error, Some(false));
-        structured::verify_success(
+        verify_success(
             result.structured_content.as_ref().unwrap(),
             &target,
-            if openai { 1 } else { 3 },
+            u64::try_from(original.lines().count()).unwrap(),
         );
         let text = output_text(&result);
         assert!(text.find("after:").unwrap() < text.find("<ID>").unwrap());
@@ -126,27 +135,37 @@ fn verify_schemas(application: &Application, expected_properties: &[&str]) {
     properties.sort_unstable();
     assert_eq!(properties, expected_properties);
 }
+fn verify_success(structured: &Value, target: &Path, line_count: u64) {
+    assert_eq!(structured["succeeded"], true);
+    let success = structured.pointer("/successes/0").unwrap();
+    assert_eq!(success.as_object().unwrap().len(), 6);
+    assert_eq!(success["kind"], "EDIT");
+    assert_eq!(
+        success["path"].as_str().unwrap(),
+        target.file_name().unwrap().to_string_lossy()
+    );
+    for state in ["before", "after"] {
+        assert_eq!(
+            *success.pointer(&format!("/{state}/lineCount")).unwrap(),
+            line_count
+        );
+    }
+    let id = success["id"].as_str().unwrap();
+    crate::operation::model::OperationId::parse(id).unwrap();
+    assert!(success["undoOf"].is_null());
+    assert_eq!(structured["failures"], Value::Array(Vec::new()));
+}
 async fn call(client: &Client, name: &str, arguments: Value) -> CallToolResult {
-    let request = ClientRequest::CallToolRequest(Request::new(
-        CallToolRequestParams::new(name.to_owned())
-            .with_arguments(arguments.as_object().unwrap().clone()),
-    ));
-    let rmcp::model::ServerResult::CallToolResult(result) =
-        client.peer().send_request(request).await.unwrap()
-    else {
-        panic!("expected call tool result");
-    };
-    result
+    client
+        .call_tool(
+            CallToolRequestParams::new(name.to_owned())
+                .with_arguments(arguments.as_object().unwrap().clone()),
+        )
+        .await
+        .unwrap()
 }
 fn output_text(result: &CallToolResult) -> &str {
-    result
-        .content
-        .first()
-        .unwrap()
-        .as_text()
-        .unwrap()
-        .text
-        .as_str()
+    result.content[0].as_text().unwrap().text.as_str()
 }
 fn output_value<'result>(result: &'result CallToolResult, pointer: &str) -> &'result Value {
     result

@@ -99,6 +99,15 @@ fn context_and_eof_share_the_same_rule_chain() {
     );
     undo(&service, &id_from(&applied));
     assert_contents(&path, Some(original));
+    let overlapping = service.apply(&format!(
+        "*** Begin Patch\n*** Update File: {}\n@@\n-old\n+changed\n*** End of File\n@@\n-old\n+again\n*** End of File\n*** End Patch",
+        path.display()
+    ));
+    assert!(!overlapping.succeeded(), "{}", overlapping.render());
+    assert_contents(
+        &path,
+        Some("heading\n\u{FEFF}  functiοn\talpha  \nold\nchanged\n"),
+    );
 }
 #[test]
 fn diagnostics_normalize_for_alignment_but_report_original_text() {

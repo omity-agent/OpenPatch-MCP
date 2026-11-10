@@ -1,5 +1,4 @@
 mod apply;
-mod file_state;
 pub(crate) mod model;
 mod result;
 mod store;

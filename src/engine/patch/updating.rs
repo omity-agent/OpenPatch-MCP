@@ -3,10 +3,11 @@ use super::{
     planning::PlannedHunk,
 };
 use crate::{
-    operation::model::{FileContents, FileState, Mutation, OperationKind},
+    operation::model::{FileState, Mutation, OperationKind},
     parser::UpdateChunk,
     text::LineEndings,
 };
+use anyhow::Context as _;
 use smallvec::SmallVec;
 use std::path::{Path, PathBuf};
 pub(super) fn plan(
@@ -16,13 +17,13 @@ pub(super) fn plan(
     snapshot: &mut impl FnMut(&Path, &str) -> anyhow::Result<FileState>,
 ) -> anyhow::Result<PlannedHunk> {
     let source_observed = snapshot(&path, "Failed to read file to update")?;
-    let FileState::Present(original) = &source_observed else {
-        anyhow::bail!("Failed to read file to update: file does not exist");
-    };
+    let original = source_observed
+        .contents()
+        .context("Failed to read file to update: file does not exist")?;
     let (source_before, source_after, chunk_errors, applied_chunks) = if chunks.is_empty() {
         (
-            FileState::share(original),
-            FileState::share(original),
+            source_observed.clone(),
+            source_observed.clone(),
             Vec::new(),
             1,
         )
@@ -33,14 +34,14 @@ pub(super) fn plan(
         (
             state_from_derived(
                 derived.before_contents,
-                original,
+                &source_observed,
                 line_endings,
                 false,
                 &normalized_original,
             ),
             state_from_derived(
                 derived.contents,
-                original,
+                &source_observed,
                 line_endings,
                 true,
                 &normalized_original,
@@ -83,14 +84,14 @@ pub(super) fn plan(
 }
 fn state_from_derived(
     derived: DerivedText,
-    original: &FileContents,
+    original: &FileState,
     line_endings: LineEndings,
     normalize_mixed_original: bool,
     normalized_original: &str,
 ) -> FileState {
     match derived {
         DerivedText::Original if !normalize_mixed_original || !line_endings.is_mixed() => {
-            FileState::share(original)
+            original.clone()
         }
         DerivedText::Original => FileState::present(normalized_original.to_owned()),
         DerivedText::Modified(modified) => FileState::present(line_endings.render(modified)),

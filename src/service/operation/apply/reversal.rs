@@ -2,6 +2,7 @@ use super::{
     super::model::{FileState, Mutation, OperationKind, PathChange, PathRole, StoredOperation},
     files, merge,
 };
+use anyhow::Context as _;
 use smallvec::smallvec;
 pub(super) fn plan(stored: &StoredOperation) -> anyhow::Result<Mutation> {
     if stored.changes.len() == 1 {
@@ -29,15 +30,17 @@ fn plan_move(stored: &StoredOperation) -> anyhow::Result<Mutation> {
     }
     let current_destination =
         files::snapshot(&destination.path, "Failed to read moved file for undo")?;
-    let FileState::Present(current_contents) = &current_destination else {
-        anyhow::bail!("moved file no longer exists at its destination");
-    };
-    let FileState::Present(after_contents) = &destination.after else {
-        anyhow::bail!("move history has no destination artifact");
-    };
-    let FileState::Present(before_contents) = &source.before else {
-        anyhow::bail!("move history has no source artifact");
-    };
+    let current_contents = current_destination
+        .contents()
+        .context("moved file no longer exists at its destination")?;
+    let after_contents = destination
+        .after
+        .contents()
+        .context("move history has no destination artifact")?;
+    let before_contents = source
+        .before
+        .contents()
+        .context("move history has no source artifact")?;
     let restored = merge::reverse_contents(before_contents, after_contents, current_contents)?;
     Ok(Mutation {
         kind: OperationKind::Move,
@@ -63,34 +66,30 @@ fn reverse_state(
     after: &FileState,
     current: &FileState,
 ) -> anyhow::Result<FileState> {
-    match (before, after, current) {
-        (
-            FileState::Present(before_contents),
-            FileState::Present(after_contents),
-            FileState::Present(current_contents),
-        ) => Ok(FileState::present(merge::reverse_contents(
-            before_contents,
-            after_contents,
-            current_contents,
-        )?)),
-        (FileState::Present(_), FileState::Present(_), FileState::Missing) => {
+    match (before.contents(), after.contents(), current.contents()) {
+        (Some(before_contents), Some(after_contents), Some(current_contents)) => {
+            Ok(FileState::present(merge::reverse_contents(
+                before_contents,
+                after_contents,
+                current_contents,
+            )?))
+        }
+        (Some(_), Some(_), None) => {
             anyhow::bail!("edited file no longer exists at its recorded path")
         }
-        (
-            FileState::Missing,
-            FileState::Present(after_contents),
-            FileState::Present(current_contents),
-        ) if after_contents == current_contents => Ok(FileState::Missing),
-        (FileState::Missing, FileState::Present(_), FileState::Present(_)) => {
+        (None, Some(after_contents), Some(current_contents))
+            if after_contents == current_contents =>
+        {
+            Ok(FileState::Missing)
+        }
+        (None, Some(_), Some(_)) => {
             anyhow::bail!("added file was modified after the recorded operation")
         }
-        (FileState::Missing, FileState::Present(_), FileState::Missing) => {
+        (None, Some(_), None) => {
             anyhow::bail!("added file is already absent")
         }
-        (FileState::Present(before_contents), FileState::Missing, FileState::Missing) => {
-            Ok(FileState::share(before_contents))
-        }
-        (FileState::Present(_), FileState::Missing, FileState::Present(_)) => {
+        (Some(_), None, None) => Ok(before.clone()),
+        (Some(_), None, Some(_)) => {
             anyhow::bail!("deleted path was recreated after the recorded operation")
         }
         _ => anyhow::bail!("unsupported or corrupt operation state transition"),
@@ -98,8 +97,8 @@ fn reverse_state(
 }
 const fn transition_kind(before: &FileState, after: &FileState) -> OperationKind {
     match (before, after) {
-        (FileState::Missing, FileState::Present(_)) => OperationKind::Add,
-        (FileState::Present(_), FileState::Missing) => OperationKind::Delete,
+        (&FileState::Missing, &FileState::Present(_)) => OperationKind::Add,
+        (&FileState::Present(_), &FileState::Missing) => OperationKind::Delete,
         _ => OperationKind::Edit,
     }
 }

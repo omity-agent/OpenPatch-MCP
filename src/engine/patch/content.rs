@@ -19,16 +19,17 @@ pub(crate) fn derive_new_contents(
     original_contents: &str,
     chunks: &[UpdateChunk],
 ) -> DerivedContents {
-    let line_analysis = split_lines(original_contents);
-    let plan = compute_replacements(&line_analysis.lines, chunks);
+    let mut original_lines = Vec::with_capacity(crate::text::line_count(original_contents));
+    original_lines.extend(original_contents.lines());
+    let plan = compute_replacements(&original_lines, chunks);
     let before_contents = render_contents(
         original_contents,
-        &line_analysis,
+        &original_lines,
         &plan.reverse_replacements,
     );
     let contents = render_contents(
         original_contents,
-        &line_analysis,
+        &original_lines,
         &plan.forward_replacements,
     );
     DerivedContents {
@@ -87,40 +88,11 @@ fn compute_replacements<'chunk>(
 }
 fn render_contents(
     original_contents: &str,
-    line_analysis: &LineAnalysis<'_>,
+    lines: &[&str],
     replacements: &[Replacement<'_>],
 ) -> DerivedText {
     if replacements.is_empty() {
         return DerivedText::Original;
     }
-    DerivedText::Modified(apply_replacements(
-        original_contents,
-        &line_analysis.lines,
-        &line_analysis.offsets,
-        replacements,
-    ))
-}
-struct LineAnalysis<'content> {
-    lines: Vec<&'content str>,
-    offsets: Vec<usize>,
-}
-fn split_lines(contents: &str) -> LineAnalysis<'_> {
-    let line_capacity = crate::text::line_count(contents);
-    let mut lines = Vec::with_capacity(line_capacity);
-    let mut offsets = Vec::with_capacity(line_capacity);
-    let mut start = 0;
-    for index in memchr::memchr_iter(b'\n', contents.as_bytes()) {
-        if let Some(line) = contents.get(start..index) {
-            lines.push(line);
-            offsets.push(start);
-        }
-        start = index + 1;
-    }
-    if start < contents.len()
-        && let Some(line) = contents.get(start..)
-    {
-        lines.push(line);
-        offsets.push(start);
-    }
-    LineAnalysis { lines, offsets }
+    DerivedText::Modified(apply_replacements(original_contents, lines, replacements))
 }

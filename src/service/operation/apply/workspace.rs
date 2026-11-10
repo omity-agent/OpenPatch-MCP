@@ -37,20 +37,7 @@ pub(super) fn plan(hunks: Vec<FileHunk>) -> BatchPlan {
     let mut failures = Vec::new();
     for hunk in hunks {
         let (kind, path) = crate::patch::hunk_context(&hunk);
-        let chunk_path = match &hunk {
-            FileHunk::Add {
-                path: source,
-                contents: _,
-                line_count: _,
-                character_count: _,
-            }
-            | FileHunk::Delete { path: source }
-            | FileHunk::Update {
-                path: source,
-                move_path: _,
-                chunks: _,
-            } => source.clone(),
-        };
+        let chunk_path = hunk.paths().0.clone();
         let planned = crate::patch::plan_hunk(hunk, &mut |snapshot_path, action| {
             workspace.snapshot(snapshot_path, action)
         });
