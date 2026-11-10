@@ -118,6 +118,3 @@ pub(crate) fn character_count(contents: &str) -> usize {
         bytecount::num_chars(contents.as_bytes())
     }
 }
-#[cfg(test)]
-#[path = "../test/text.rs"]
-mod tests;

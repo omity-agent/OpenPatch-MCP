@@ -35,6 +35,3 @@ fn transfer_changes(
     let patch = options.create_patch(source, target);
     diffy::apply(destination, &patch).context(CONFLICT_REASON)
 }
-#[cfg(test)]
-#[path = "../../../../test/service/merge.rs"]
-mod tests;

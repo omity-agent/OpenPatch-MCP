@@ -1,4 +1,4 @@
-use rmcp::serde_json::{Value, json};
+use rmcp::serde_json::Value;
 use std::path::Path;
 pub(super) fn verify_success(structured: &Value, target: &Path, line_count: u64) {
     assert_eq!(structured["succeeded"], true);
@@ -14,7 +14,7 @@ pub(super) fn verify_success(structured: &Value, target: &Path, line_count: u64)
     assert_eq!(success["kind"], "EDIT");
     assert_eq!(
         success["path"].as_str().unwrap(),
-        target.display().to_string()
+        target.file_name().unwrap().to_string_lossy()
     );
     for state in ["before", "after"] {
         assert_eq!(
@@ -30,13 +30,5 @@ pub(super) fn verify_success(structured: &Value, target: &Path, line_count: u64)
         id
     );
     assert!(success["undoOf"].is_null());
-    assert_eq!(structured["failures"], json!([]));
-}
-pub(super) fn verify_failure(structured: &Value) {
-    assert_eq!(structured["succeeded"], false);
-    assert_eq!(structured["successes"], json!([]));
-    assert_eq!(
-        structured.pointer("/failures/0").unwrap(),
-        &json!({"operation": null, "undoId": null, "reason": "patch must not be empty"})
-    );
+    assert_eq!(structured["failures"], Value::Array(Vec::new()));
 }

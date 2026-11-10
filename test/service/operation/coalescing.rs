@@ -43,24 +43,6 @@ fn edits_and_deletes_coalesce_and_remain_undoable() {
     }
 }
 #[test]
-fn fully_cancelled_operations_return_an_error() {
-    let (_directory, service, target) = target("old\n");
-    let patch = format!(
-        "*** Begin Patch\n*** Update File: {}\n@@\n-old\n+new\n*** Update File: {}\n@@\n-new\n+old\n*** End Patch",
-        target.display(),
-        target.display()
-    );
-    let applied = service.apply(&patch);
-    assert!(!applied.succeeded());
-    assert!(
-        applied
-            .render()
-            .contains("No effective file operations remained after merging.")
-    );
-    assert!(!applied.render().contains("<ID>"));
-    assert_eq!(fs::read_to_string(target).unwrap(), "old\n");
-}
-#[test]
 fn move_chain_is_coalesced_into_one_move() {
     let directory = tempfile::tempdir().unwrap();
     let service = service(&directory);

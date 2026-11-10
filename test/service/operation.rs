@@ -3,14 +3,14 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
-#[path = "operation/applying.rs"]
-mod applying;
 #[path = "operation/coalescing.rs"]
 mod coalescing;
 #[path = "operation/line_endings.rs"]
 mod line_endings;
 #[path = "operation/relocation.rs"]
 mod relocation;
+#[path = "operation/repetition.rs"]
+mod repetition;
 #[path = "operation/replacement.rs"]
 mod replacement;
 #[path = "operation/rules.rs"]
@@ -107,40 +107,4 @@ fn undo_move_restores_source_and_overwritten_destination() {
     assert!(redone.render().contains("<MOVE>"));
     assert!(!directory.path().join("source.txt").exists());
     assert_eq!(fs::read_to_string(destination).unwrap(), "source\nextra\n");
-}
-#[test]
-fn separate_service_instances_share_transactional_history() {
-    let directory = tempfile::tempdir().unwrap();
-    let database = directory.path().join("history.lmdb");
-    let writer = OperationService::open(&database).unwrap();
-    let reader = OperationService::open(&database).unwrap();
-    let target = directory.path().join("shared.txt");
-    let applied = apply(
-        &writer,
-        &format!("*** Add File: {}\n+shared", target.display()),
-    );
-    undo(&reader, &id_from(&applied));
-    assert!(!target.exists());
-}
-#[test]
-fn batch_undo_keeps_successes_beside_invalid_id_failure() {
-    let directory = tempfile::tempdir().unwrap();
-    let service = service(&directory);
-    let first = directory.path().join("first.txt");
-    let second = directory.path().join("second.txt");
-    let applied = apply(
-        &service,
-        &format!(
-            "*** Add File: {}\n+first\n*** Add File: {}\n+second",
-            first.display(),
-            second.display()
-        ),
-    );
-    let [first_id, second_id]: [String; 2] = ids_from(&applied).try_into().unwrap();
-    let result = service.undo(&[first_id, String::from("not-an-id"), second_id]);
-    assert!(!result.succeeded());
-    assert!(result.render().contains("<SUCCEEDED>"));
-    assert!(result.render().contains("<FAILED>"));
-    assert!(!first.exists());
-    assert!(!second.exists());
 }

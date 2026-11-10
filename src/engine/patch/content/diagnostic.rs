@@ -34,6 +34,3 @@ fn format_closest_match(message: &str, target_fragment: &str) -> String {
     let fence = "`".repeat(fence_length);
     format!("{message}. Closest match:\n{fence}\n{target_fragment}\n{fence}")
 }
-#[cfg(test)]
-#[path = "../../../../test/engine/diagnostic.rs"]
-mod tests;

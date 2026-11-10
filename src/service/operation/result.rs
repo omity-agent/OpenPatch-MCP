@@ -1,8 +1,14 @@
+mod explanation;
+mod labels;
 mod render;
+mod schema;
 use super::model::{OperationId, OperationKind};
-use rmcp::schemars::{JsonSchema, Schema};
+use explanation::Diagnostic;
+pub(crate) use explanation::PathContext;
+use rmcp::schemars::JsonSchema;
+use schema::{remove_integer_format, require_failure_fields, require_success_fields};
 use sonic_rs::Serialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 pub(crate) type PatchToolOutput = OperationOutput;
 #[derive(Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -26,7 +32,7 @@ impl Default for OperationOutput {
     }
 }
 impl OperationOutput {
-    pub(super) fn failed(reason: String) -> Self {
+    pub(super) fn failed(reason: impl Into<Diagnostic>) -> Self {
         Self {
             succeeded: false,
             successes: Vec::new(),
@@ -39,6 +45,19 @@ impl OperationOutput {
     pub(super) fn push_failure(&mut self, failure: Failure) {
         self.succeeded = false;
         self.failures.push(failure);
+    }
+    pub(super) fn finish(mut self) -> Self {
+        let labels = labels::PathLabels::new(&self);
+        for success in &mut self.successes {
+            success.path = labels.display(Path::new(&success.path));
+        }
+        for failure in &mut self.failures {
+            if let Some(operation) = failure.operation.as_mut() {
+                operation.path = labels.display(Path::new(&operation.path));
+            }
+            failure.reason.finish(&labels);
+        }
+        self
     }
     pub(crate) const fn succeeded(&self) -> bool {
         self.succeeded
@@ -106,7 +125,8 @@ impl Success {
 pub(super) struct Failure {
     operation: Option<FailedOperation>,
     undo_id: Option<String>,
-    reason: String,
+    #[schemars(with = "String")]
+    reason: Diagnostic,
 }
 #[derive(Debug, Serialize, JsonSchema)]
 #[schemars(rename = "FailedOperation", deny_unknown_fields)]
@@ -115,48 +135,30 @@ struct FailedOperation {
     path: String,
 }
 impl Failure {
-    pub(super) fn file(kind: OperationKind, path: PathBuf, reason: String) -> Self {
+    pub(super) fn file(kind: OperationKind, path: PathBuf, reason: impl Into<Diagnostic>) -> Self {
         Self {
             operation: Some(FailedOperation {
                 kind,
                 path: display_path(path),
             }),
             undo_id: None,
-            reason,
+            reason: reason.into(),
         }
     }
-    pub(super) const fn undo(id: String, reason: String) -> Self {
+    pub(super) fn undo(id: String, reason: impl Into<Diagnostic>) -> Self {
         Self {
             operation: None,
             undo_id: Some(id),
-            reason,
+            reason: reason.into(),
         }
     }
-    pub(super) const fn global(reason: String) -> Self {
+    pub(super) fn global(reason: impl Into<Diagnostic>) -> Self {
         Self {
             operation: None,
             undo_id: None,
-            reason,
+            reason: reason.into(),
         }
     }
-}
-fn remove_integer_format(schema: &mut Schema) {
-    schema.remove("format");
-}
-fn require_success_fields(schema: &mut Schema) {
-    schema.insert(
-        String::from("required"),
-        required_fields(&["kind", "path", "before", "after", "id", "undoOf"]),
-    );
-}
-fn require_failure_fields(schema: &mut Schema) {
-    schema.insert(
-        String::from("required"),
-        required_fields(&["operation", "undoId", "reason"]),
-    );
-}
-fn required_fields(fields: &[&str]) -> rmcp::serde_json::Value {
-    rmcp::serde_json::Value::Array(fields.iter().map(|field| (*field).into()).collect())
 }
 fn display_path(path: PathBuf) -> String {
     path.into_os_string().to_string_lossy().into_owned()

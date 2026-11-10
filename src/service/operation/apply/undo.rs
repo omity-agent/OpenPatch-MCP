@@ -7,13 +7,14 @@ use super::{
     durable, reversal,
     workspace::PlannedMutation,
 };
+use alloc::sync::Arc;
 pub(crate) fn execute(service: &OperationService, id_texts: &[String]) -> OperationOutput {
     if id_texts.is_empty() {
         return OperationOutput::failed(String::from("ids must not be empty"));
     }
     let guard = match service.begin() {
         Ok(guard) => guard,
-        Err(error) => return OperationOutput::failed(format!("{error:#}")),
+        Err(error) => return OperationOutput::failed(error),
     };
     let mut output = OperationOutput::default();
     let mut targets = Vec::with_capacity(id_texts.len());
@@ -30,9 +31,9 @@ pub(crate) fn execute(service: &OperationService, id_texts: &[String]) -> Operat
     let order = match service.history.for_undo(&target_ids) {
         Ok(order) => order,
         Err(error) => {
-            let reason = error.to_string();
+            let reason = Arc::new(error);
             for (id_text, _) in targets {
-                output.push_failure(Failure::undo(id_text, reason.clone()));
+                output.push_failure(Failure::undo(id_text, Arc::clone(&reason)));
             }
             return output;
         }
@@ -46,7 +47,7 @@ pub(crate) fn execute(service: &OperationService, id_texts: &[String]) -> Operat
         };
         match commit(service, target) {
             Ok((mutation, id)) => output.push_success(success(&mutation, id, target)),
-            Err(error) => output.push_failure(Failure::undo(id_text, format!("{error:#}"))),
+            Err(error) => output.push_failure(Failure::undo(id_text, error)),
         }
     }
     drop(guard);

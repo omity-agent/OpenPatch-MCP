@@ -107,11 +107,6 @@ fn to_tool_result(output: &OperationOutput) -> Result<CallToolResult, McpError> 
     Ok(result)
 }
 # [tool_handler (router = self . tool_router)]
-#[expect(
-    clippy::missing_trait_methods,
-    clippy::unused_async_trait_impl,
-    reason = "rmcp supplies default handlers and generated async glue"
-)]
 impl ServerHandler for Application {}
 #[cfg(test)]
 #[path = "../../test/service/server.rs"]

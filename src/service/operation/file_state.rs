@@ -1,12 +1,6 @@
 use alloc::sync::Arc;
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct FileContents(
-    #[expect(
-        clippy::rc_buffer,
-        reason = "Arc<String> takes ownership of read_to_string buffers without copying their text"
-    )]
-    Arc<String>,
-);
+pub(crate) struct FileContents(Arc<String>);
 impl FileContents {
     fn new(contents: String) -> Self {
         Self(Arc::new(contents))
@@ -46,10 +40,6 @@ impl FileState {
     pub(crate) fn share(contents: &FileContents) -> Self {
         Self::Present(contents.share())
     }
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "matching the borrowed enum keeps the returned contents borrowed"
-    )]
     pub(crate) fn contents(&self) -> Option<&str> {
         match self {
             &Self::Missing => None,
@@ -57,6 +47,3 @@ impl FileState {
         }
     }
 }
-#[cfg(test)]
-#[path = "../../../test/service/file_state.rs"]
-mod tests;

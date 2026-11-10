@@ -23,7 +23,7 @@ fn chunk_failures_are_edits_and_do_not_move_the_file() {
         assert_eq!(structured["failures"][0]["operation"]["kind"], kind);
         assert_eq!(
             structured["failures"][0]["operation"]["path"],
-            path.display().to_string()
+            path.file_name().unwrap().to_string_lossy().as_ref()
         );
         assert!(!destination.exists());
         if let Some(original) = contents {

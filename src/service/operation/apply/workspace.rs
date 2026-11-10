@@ -1,5 +1,8 @@
 use super::{
-    super::model::{FileState, FileStates, Mutation, OperationKind, PathRole},
+    super::{
+        model::{FileState, FileStates, Mutation, OperationKind, PathRole},
+        result::Failure,
+    },
     files,
 };
 use crate::parser::FileHunk;
@@ -10,14 +13,9 @@ pub(super) struct PlannedMutation {
     pub(super) mutation: Mutation,
     pub(super) observed: FileStates,
 }
-pub(super) struct PlanningFailure {
-    pub(super) kind: OperationKind,
-    pub(super) path: PathBuf,
-    pub(super) reason: String,
-}
 pub(super) struct BatchPlan {
     pub(super) mutations: Vec<PlannedMutation>,
-    pub(super) failures: Vec<PlanningFailure>,
+    pub(super) failures: Vec<Failure>,
     pub(super) eliminated_all: bool,
 }
 #[derive(Default)]
@@ -34,10 +32,6 @@ pub(super) struct VirtualFile {
     pub(super) logical_before: Option<FileState>,
     pub(super) first_order: usize,
 }
-#[expect(
-    clippy::pattern_type_mismatch,
-    reason = "the hunk remains borrowed while its source path is cloned for chunk diagnostics"
-)]
 pub(super) fn plan(hunks: Vec<FileHunk>) -> BatchPlan {
     let mut workspace = Workspace::default();
     let mut failures = Vec::new();
@@ -63,30 +57,22 @@ pub(super) fn plan(hunks: Vec<FileHunk>) -> BatchPlan {
         match planned {
             Ok(planned_hunk) => {
                 for reason in planned_hunk.chunk_errors {
-                    failures.push(PlanningFailure {
-                        kind: OperationKind::Edit,
-                        path: chunk_path.clone(),
+                    failures.push(Failure::file(
+                        OperationKind::Edit,
+                        chunk_path.clone(),
                         reason,
-                    });
+                    ));
                 }
                 for mutation in planned_hunk.mutations {
                     let mutation_kind = mutation.kind;
                     let mutation_path = mutation.display_path.clone();
                     if let Err(error) = workspace.record(mutation) {
-                        failures.push(PlanningFailure {
-                            kind: mutation_kind,
-                            path: mutation_path,
-                            reason: error.to_string(),
-                        });
+                        failures.push(Failure::file(mutation_kind, mutation_path, error));
                         break;
                     }
                 }
             }
-            Err(error) => failures.push(PlanningFailure {
-                kind,
-                path,
-                reason: error.to_string(),
-            }),
+            Err(error) => failures.push(Failure::file(kind, path, error)),
         }
     }
     let mutation_count = workspace.mutation_count;

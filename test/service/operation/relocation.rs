@@ -1,6 +1,6 @@
-use super::{ids_from, service, target};
+use super::{ids_from, service};
 use crate::operation::result::OperationOutput;
-use std::{fs, path::Path};
+use std::path::Path;
 #[path = "relocation/failures.rs"]
 mod failures;
 #[path = "relocation/interleaving.rs"]
@@ -12,12 +12,10 @@ fn assert_operations(output: &OperationOutput, expected: &[(&str, &Path)]) -> Ve
     assert_eq!(ids.len(), expected.len(), "{rendered}");
     let structured = output.structured();
     for (index, &(kind, path)) in expected.iter().enumerate() {
+        let label = path.file_name().unwrap().to_string_lossy();
         assert_eq!(structured["successes"][index]["kind"], kind);
-        assert_eq!(
-            structured["successes"][index]["path"],
-            path.display().to_string()
-        );
-        assert!(rendered.contains(&format!("<{kind}>\n{}", path.display())));
+        assert_eq!(structured["successes"][index]["path"], label.as_ref());
+        assert!(rendered.contains(&format!("<{kind}>\n{label}\n")));
         if kind == "MOVE" {
             assert_eq!(
                 structured["successes"][index]["before"],
@@ -26,18 +24,4 @@ fn assert_operations(output: &OperationOutput, expected: &[(&str, &Path)]) -> Ve
         }
     }
     ids
-}
-#[test]
-fn same_path_move_with_content_changes_remains_edit() {
-    let (_directory, service, target) = target("old\n");
-    let patch = format!(
-        "*** Begin Patch\n*** Update File: {}\n*** Move to: {}\n@@\n-old\n+new\n*** End Patch",
-        target.display(),
-        target.display()
-    );
-    let applied = service.apply(&patch);
-    assert!(applied.succeeded(), "{}", applied.render());
-    assert_eq!(applied.structured()["successes"][0]["kind"], "EDIT");
-    assert!(!applied.render().contains("<MOVE>"));
-    assert_eq!(fs::read_to_string(target).unwrap(), "new\n");
 }

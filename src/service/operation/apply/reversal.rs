@@ -20,10 +20,6 @@ fn plan_single(stored: &StoredOperation) -> anyhow::Result<Mutation> {
     let kind = transition_kind(&current, &result);
     Ok(Mutation::single(kind, change.path.clone(), current, result))
 }
-#[expect(
-    clippy::pattern_type_mismatch,
-    reason = "the three file contents must remain borrowed during merge planning"
-)]
 fn plan_move(stored: &StoredOperation) -> anyhow::Result<Mutation> {
     let source = stored.change(PathRole::Source)?;
     let destination = stored.change(PathRole::Destination)?;
@@ -62,10 +58,6 @@ fn plan_move(stored: &StoredOperation) -> anyhow::Result<Mutation> {
         ],
     })
 }
-#[expect(
-    clippy::pattern_type_mismatch,
-    reason = "matching borrowed states avoids cloning before the selected transition is known"
-)]
 fn reverse_state(
     before: &FileState,
     after: &FileState,
@@ -104,10 +96,6 @@ fn reverse_state(
         _ => anyhow::bail!("unsupported or corrupt operation state transition"),
     }
 }
-#[expect(
-    clippy::pattern_type_mismatch,
-    reason = "the operation kind is derived directly from two borrowed states"
-)]
 const fn transition_kind(before: &FileState, after: &FileState) -> OperationKind {
     match (before, after) {
         (FileState::Missing, FileState::Present(_)) => OperationKind::Add,

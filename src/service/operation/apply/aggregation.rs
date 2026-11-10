@@ -102,10 +102,6 @@ fn effective_before(file: &VirtualFile) -> Option<&FileState> {
         Some(logical_before)
     }
 }
-#[expect(
-    clippy::pattern_type_mismatch,
-    reason = "the operation kind is derived directly from two borrowed states"
-)]
 const fn transition_kind(before: &FileState, after: &FileState) -> OperationKind {
     match (before, after) {
         (FileState::Missing, FileState::Present(_)) => OperationKind::Add,

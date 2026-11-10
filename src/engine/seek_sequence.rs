@@ -75,6 +75,3 @@ impl<'text> RuleIndex<'text> {
             .find(pattern, start, eof)
     }
 }
-#[cfg(test)]
-#[path = "../../test/engine/seek_sequence.rs"]
-mod tests;

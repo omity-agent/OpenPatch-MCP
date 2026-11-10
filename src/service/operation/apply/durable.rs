@@ -1,5 +1,6 @@
 use super::{files, workspace::PlannedMutation};
 use crate::operation::{
+    PathContext,
     model::OperationId,
     store::{HistoryStore, Transition},
 };
@@ -67,8 +68,7 @@ pub(super) fn collapse(planned: &[PlannedMutation]) -> anyhow::Result<Vec<Transi
                     let transition = entry.get_mut();
                     anyhow::ensure!(
                         transition.after == *observed,
-                        "discontinuous file operation plan: {}",
-                        change.path.display()
+                        PathContext::new("discontinuous file operation plan", &change.path)
                     );
                     transition.after = change.after.clone();
                 }

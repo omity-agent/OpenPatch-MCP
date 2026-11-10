@@ -19,8 +19,9 @@ async fn undo_accepts_ids_and_reports_short_ids_in_both_output_formats() {
     let applied = call(&client, "apply_patch", json!({"patch": patch})).await;
     assert_eq!(applied.is_error, Some(false));
     let original = output_id(&applied);
-    let undo = call_undo(&client, &[original]).await;
-    assert_eq!(undo.is_error, Some(false));
+    let undo = call_undo(&client, &[original, "not-an-id"]).await;
+    assert_eq!(undo.is_error, Some(true));
+    assert_eq!(*output_value(&undo, "/failures/0/undoId"), "not-an-id");
     let reversal = output_id(&undo);
     assert_ne!(reversal, original);
     assert_eq!(*output_value(&undo, "/successes/0/undoOf"), original);
@@ -36,12 +37,6 @@ async fn undo_accepts_ids_and_reports_short_ids_in_both_output_formats() {
     let redone = call_undo(&client, &[reversal]).await;
     assert_eq!(redone.is_error, Some(false));
     assert_eq!(fs::read_to_string(&target).unwrap(), "after\n");
-    let invalid = call_undo(&client, &["oppc-ABC12345"]).await;
-    assert_eq!(invalid.is_error, Some(true));
-    assert_eq!(
-        *output_value(&invalid, "/failures/0/undoId"),
-        "oppc-ABC12345"
-    );
     let empty = call_undo(&client, &[]).await;
     assert_eq!(empty.is_error, Some(true));
     assert_eq!(

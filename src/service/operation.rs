@@ -3,6 +3,7 @@ mod file_state;
 pub(crate) mod model;
 mod result;
 mod store;
+pub(crate) use result::PathContext;
 pub(crate) use result::{OperationOutput, PatchToolOutput};
 use store::HistoryStore;
 #[derive(Debug, Clone)]
@@ -28,7 +29,7 @@ impl OperationService {
         Ok(guard)
     }
     pub(crate) fn apply(&self, patch: &str) -> OperationOutput {
-        apply::execute(self, patch)
+        apply::execute(self, patch).finish()
     }
     pub(crate) fn replace(
         &self,
@@ -36,10 +37,10 @@ impl OperationService {
         old_string: &str,
         new_string: &str,
     ) -> OperationOutput {
-        apply::execute_replacement(self, path, old_string, new_string)
+        apply::execute_replacement(self, path, old_string, new_string).finish()
     }
     pub(crate) fn undo(&self, ids: &[String]) -> OperationOutput {
-        apply::undo::execute(self, ids)
+        apply::undo::execute(self, ids).finish()
     }
 }
 #[cfg(test)]

@@ -9,10 +9,6 @@ use crate::{
 };
 use smallvec::SmallVec;
 use std::path::{Path, PathBuf};
-#[expect(
-    clippy::pattern_type_mismatch,
-    reason = "the source contents remain borrowed while deriving the updated contents"
-)]
 pub(super) fn plan(
     path: PathBuf,
     move_path: Option<PathBuf>,

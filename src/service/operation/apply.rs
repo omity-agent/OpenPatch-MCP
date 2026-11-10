@@ -36,11 +36,7 @@ pub(super) fn execute_replacement(
         Ok(expanded) => expanded,
         Err(error) => {
             let mut output = OperationOutput::default();
-            output.push_failure(Failure::file(
-                OperationKind::Edit,
-                display_path,
-                error.to_string(),
-            ));
+            output.push_failure(Failure::file(OperationKind::Edit, display_path, error));
             return output;
         }
     };

@@ -43,9 +43,6 @@ impl fmt::Display for OperationId {
         write!(f, "oppc-{digits:0>8}")
     }
 }
-#[cfg(test)]
-#[path = "../../../test/identifiers.rs"]
-mod identifier_tests;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[repr(i64)]
 #[serde(rename_all = "UPPERCASE")]

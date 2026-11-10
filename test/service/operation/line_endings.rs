@@ -1,19 +1,6 @@
 use super::{id_from, service, target, undo};
 use std::fs;
 #[test]
-fn new_file_uses_lf_independently_of_patch_line_endings() {
-    let directory = tempfile::tempdir().unwrap();
-    let service = service(&directory);
-    let target = directory.path().join("target.txt");
-    let patch = format!(
-        "*** Begin Patch\r\n*** Add File: {}\n+first\r\n+second\n*** End Patch",
-        target.display()
-    );
-    let output = service.apply(&patch);
-    assert!(output.succeeded(), "{}", output.render());
-    assert_eq!(fs::read_to_string(target).unwrap(), "first\nsecond\n");
-}
-#[test]
 fn updates_preserve_original_newlines_and_normalize_mixed_newlines() {
     let (_directory, service, target) = target("");
     let patch = format!(

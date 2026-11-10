@@ -1,5 +1,4 @@
-use super::super::{model::FileState, store::Transition};
-use anyhow::Context as _;
+use super::super::{PathContext, model::FileState, store::Transition};
 use atomic_write_file::AtomicWriteFile;
 use std::{
     fs,
@@ -10,15 +9,17 @@ pub(crate) fn snapshot(path: &Path, action: &str) -> anyhow::Result<FileState> {
     match fs::read_to_string(path) {
         Ok(contents) => Ok(FileState::present(contents)),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(FileState::Missing),
-        Err(error) => Err(anyhow::anyhow!("{action}: {error}")),
+        Err(error) => Err(PathContext::new(action, path).with_source(error).into()),
     }
 }
 pub(crate) fn verify(transitions: &[Transition]) -> anyhow::Result<()> {
     for transition in transitions {
         anyhow::ensure!(
             state_matches(&transition.path, &transition.before)?,
-            "file changed concurrently before operation could be committed: {}",
-            transition.path.display()
+            PathContext::new(
+                "file changed concurrently before operation could be committed",
+                &transition.path,
+            )
         );
     }
     Ok(())
@@ -30,8 +31,8 @@ pub(crate) fn publish(transitions: &[Transition]) -> anyhow::Result<()> {
         .collect::<anyhow::Result<Vec<_>>>()?;
     for (transition, changed) in transitions.iter().zip(pending) {
         if changed && needs_write(transition)? {
-            write_state(&transition.path, &transition.after).with_context(|| {
-                format!("failed to publish file: {}", transition.path.display())
+            write_state(&transition.path, &transition.after).map_err(|error| {
+                PathContext::new("failed to publish file", &transition.path).with_source(error)
             })?;
         }
     }
@@ -43,8 +44,10 @@ fn needs_write(transition: &Transition) -> anyhow::Result<bool> {
     }
     anyhow::ensure!(
         state_matches(&transition.path, &transition.after)?,
-        "file changed outside the recorded operation: {}",
-        transition.path.display()
+        PathContext::new(
+            "file changed outside the recorded operation",
+            &transition.path,
+        )
     );
     Ok(false)
 }

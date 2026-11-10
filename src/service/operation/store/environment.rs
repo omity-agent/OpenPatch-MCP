@@ -1,4 +1,5 @@
 use super::HistoryStore;
+use crate::operation::PathContext;
 use alloc::sync::{Arc, Weak};
 use anyhow::Context as _;
 use directories::ProjectDirs;
@@ -35,8 +36,9 @@ impl HistoryStore {
         Self::open_capacity(path, map_size)
     }
     pub(super) fn open_capacity(path: &Path, map_size: usize) -> anyhow::Result<Arc<Self>> {
-        fs::create_dir_all(path)
-            .with_context(|| format!("failed to create history directory: {}", path.display()))?;
+        fs::create_dir_all(path).map_err(|error| {
+            PathContext::new("failed to create history directory", path).with_source(error)
+        })?;
         let canonical = path.canonicalize()?;
         let mut registry = OPEN_STORES
             .lock()
@@ -109,7 +111,8 @@ fn lock_directory(path: &Path) -> anyhow::Result<File> {
         .create(true)
         .truncate(false)
         .open(path.join("operations.lock"))?;
-    file.lock()
-        .with_context(|| format!("failed to lock operation history: {}", path.display()))?;
+    file.lock().map_err(|error| {
+        PathContext::new("failed to lock operation history", path).with_source(error)
+    })?;
     Ok(file)
 }

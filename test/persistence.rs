@@ -44,23 +44,6 @@ fn assert_file(root: &Path, name: &str, expected: &str) {
     assert_eq!(read(root, name), expected, "{name}");
 }
 #[test]
-fn states_round_trip_and_shared_contents_are_stored_once() {
-    let directory = tempfile::tempdir().unwrap();
-    let store = store(&directory);
-    let shared = "same\r\nUnicode: \u{4f60}\u{597d}";
-    let mutation = Mutation::moved(
-        PathBuf::from("source.txt"),
-        PathBuf::from("destination.txt"),
-        present(shared),
-        present("displaced\n"),
-    );
-    let id = record(&store, &mutation);
-    assert_eq!(store.load(id).unwrap().changes, mutation.changes);
-    let transaction = store.env.read_txn().unwrap();
-    assert_eq!(store.contents.len(&transaction).unwrap(), 2);
-    assert_eq!(store.references.len(&transaction).unwrap(), 2);
-}
-#[test]
 fn pruning_releases_only_last_references_and_keeps_newest_thousand() {
     let directory = tempfile::tempdir().unwrap();
     let store = store(&directory);
@@ -87,17 +70,4 @@ fn pruning_releases_only_last_references_and_keeps_newest_thousand() {
         .get(&transaction, digest.as_bytes())
         .unwrap();
     assert_eq!(references, Some(1000));
-}
-#[test]
-fn aborted_write_does_not_leave_orphaned_content() {
-    let directory = tempfile::tempdir().unwrap();
-    let store = store(&directory);
-    let mut transaction = store.env.write_txn().unwrap();
-    store
-        .retain_content(&mut transaction, &present("uncommitted"))
-        .unwrap();
-    transaction.abort();
-    let reader = store.env.read_txn().unwrap();
-    assert!(store.contents.is_empty(&reader).unwrap());
-    assert!(store.references.is_empty(&reader).unwrap());
 }

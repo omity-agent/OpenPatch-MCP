@@ -63,10 +63,6 @@ fn plan_delete(
         chunk_errors: Vec::new(),
     })
 }
-#[expect(
-    clippy::pattern_type_mismatch,
-    reason = "the hunk remains borrowed while its path is cloned for diagnostics"
-)]
 pub(crate) fn hunk_context(hunk: &FileHunk) -> (OperationKind, PathBuf) {
     match hunk {
         FileHunk::Add {

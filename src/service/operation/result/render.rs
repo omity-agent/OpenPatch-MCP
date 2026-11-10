@@ -38,16 +38,16 @@ fn push_success(output: &mut String, success: &Success) {
 fn push_failure(output: &mut String, failure: &Failure) {
     if let Some(operation) = failure.operation.as_ref() {
         push_start(output, operation.kind.tag(), &operation.path);
-        push_reason(output, &failure.reason);
+        push_reason(output, &failure.reason.message);
         push_end(output, operation.kind.tag());
     } else if let Some(id) = failure.undo_id.as_ref() {
         output.push_str("<UNDO>\n<ID>\n");
         output.push_str(id);
         output.push_str("\n</ID>\n");
-        push_reason(output, &failure.reason);
+        push_reason(output, &failure.reason.message);
         output.push_str("</UNDO>\n");
     } else {
-        push_reason(output, &failure.reason);
+        push_reason(output, &failure.reason.message);
     }
 }
 fn push_start(output: &mut String, tag: &str, path: &str) {

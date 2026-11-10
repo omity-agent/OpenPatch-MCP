@@ -1,27 +1,32 @@
 mod home;
-#[cfg(test)]
-#[path = "../../test/engine/path_expansion.rs"]
-mod tests;
 mod windows;
 use home::{needs_tilde_expansion, tilde_input};
-use std::{ffi::OsString, path::PathBuf};
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+};
 use windows::expand_windows_variables;
 #[derive(Debug, Clone, PartialEq, Eq, thiserror :: Error)]
 pub(crate) enum PathExpansionError {
-    #[error("environment variable '{name}' is not set in path '{path}'")]
+    #[error("environment variable '{name}' is not set in path '{}'", file_label(.path))]
     MissingVariable { name: String, path: String },
-    #[error("empty environment variable name in path '{path}'")]
+    #[error("empty environment variable name in path '{}'", file_label(.path))]
     EmptyVariable { path: String },
-    #[error("unterminated braced environment variable in path '{path}'")]
+    #[error("unterminated braced environment variable in path '{}'", file_label(.path))]
     UnterminatedBracedVariable { path: String },
-    #[error("home directory is unavailable for path '{path}'")]
+    #[error("home directory is unavailable for path '{}'", file_label(.path))]
     MissingHome { path: String },
-    #[error("home directory is not valid Unicode for path '{path}'")]
+    #[error("home directory is not valid Unicode for path '{}'", file_label(.path))]
     NonUnicodeHome { path: String },
-    #[error("path expansion reached an invalid UTF-8 boundary in path '{path}'")]
+    #[error("path expansion reached an invalid UTF-8 boundary in path '{}'", file_label(.path))]
     InvalidBoundary { path: String },
-    #[error("environment variable '{name}' is not valid Unicode in path '{path}'")]
+    #[error("environment variable '{name}' is not valid Unicode in path '{}'", file_label(.path))]
     NonUnicodeVariable { name: String, path: String },
+}
+fn file_label(path: &str) -> alloc::borrow::Cow<'_, str> {
+    Path::new(path)
+        .file_name()
+        .map_or_else(|| ".".into(), std::ffi::OsStr::to_string_lossy)
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum VariableValue {

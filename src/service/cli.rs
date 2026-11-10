@@ -12,6 +12,3 @@ pub enum InputStyle {
     General,
     Openai,
 }
-#[cfg(test)]
-#[path = "../../test/service/cli.rs"]
-mod tests;

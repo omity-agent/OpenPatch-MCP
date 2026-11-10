@@ -6,21 +6,23 @@ use super::{
     durable, success, workspace,
 };
 use crate::parser::FileHunk;
+use alloc::sync::Arc;
 pub(super) fn execute(service: &OperationService, hunks: Vec<FileHunk>) -> OperationOutput {
     let mut output = OperationOutput::default();
     let guard = match service.begin() {
         Ok(guard) => guard,
         Err(error) => {
+            let reason = Arc::new(error);
             for hunk in &hunks {
                 let (kind, path) = crate::patch::hunk_context(hunk);
-                output.push_failure(Failure::file(kind, path, format!("{error:#}")));
+                output.push_failure(Failure::file(kind, path, Arc::clone(&reason)));
             }
             return output;
         }
     };
     let plan = workspace::plan(hunks);
     for failure in plan.failures {
-        output.push_failure(Failure::file(failure.kind, failure.path, failure.reason));
+        output.push_failure(failure);
     }
     if plan.eliminated_all {
         output.push_failure(Failure::global(String::from(
@@ -35,11 +37,12 @@ pub(super) fn execute(service: &OperationService, hunks: Vec<FileHunk>) -> Opera
                 }
             }
             Err(error) => {
+                let reason = Arc::new(error);
                 for planned in plan.mutations {
                     output.push_failure(Failure::file(
                         planned.mutation.kind,
                         planned.mutation.display_path,
-                        format!("{error:#}"),
+                        Arc::clone(&reason),
                     ));
                 }
             }

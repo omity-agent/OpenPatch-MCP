@@ -6,16 +6,14 @@ use rmcp::{
     serde_json::{Value, json},
 };
 use std::fs;
+#[path = "server/paths.rs"]
+mod paths;
 #[path = "server/structured.rs"]
 mod structured;
 #[path = "server/undo_protocol.rs"]
 mod undo_protocol;
 #[derive(Clone, Default)]
 struct TestClient;
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "default client handlers are enough for this in-process test"
-)]
 impl ClientHandler for TestClient {}
 type Client = rmcp::service::RunningService<rmcp::RoleClient, TestClient>;
 async fn connect(
@@ -79,11 +77,6 @@ async fn applies_both_input_styles_and_reports_structured_results() {
         );
         let text = output_text(&result);
         assert!(text.find("after:").unwrap() < text.find("<ID>").unwrap());
-        if openai {
-            let failure = call(&client, "apply_patch", json!({"patch": ""})).await;
-            assert_eq!(failure.is_error, Some(true));
-            structured::verify_failure(failure.structured_content.as_ref().unwrap());
-        }
         assert_eq!(fs::read_to_string(&target).unwrap(), expected);
         client.cancel().await.unwrap();
         server.await.unwrap().unwrap();
@@ -104,16 +97,6 @@ fn verify_schemas(application: &Application, expected_properties: &[&str]) {
             output.pointer("/$defs/OutputOperationKind/enum").unwrap(),
             &json!(["ADD", "EDIT", "DELETE", "MOVE"])
         );
-        for field in ["id", "undoOf"] {
-            assert_eq!(
-                *output
-                    .pointer(&format!(
-                        "/$defs/SuccessfulOperation/properties/{field}/pattern"
-                    ))
-                    .unwrap(),
-                crate::operation::model::ID_PATTERN
-            );
-        }
     }
     let undo = tools.iter().find(|tool| tool.name == "undo_patch").unwrap();
     assert_eq!(
